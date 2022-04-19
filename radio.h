@@ -35,7 +35,7 @@ struct frontend {
     struct sockaddr_storage metadata_dest_address;      // Dest of metadata (typically multicast)
     char metadata_dest_string[_POSIX_HOST_NAME_MAX+20]; // Allow room for :portnum
     uint64_t metadata_packets;
-    
+
     struct sockaddr_storage data_source_address;     // Source of I/Q data
     struct sockaddr_storage data_dest_address;       // Dest of I/Q data (typically multicast)
     char data_dest_string[_POSIX_HOST_NAME_MAX+20];  // Allow room for :portnum
@@ -62,7 +62,7 @@ struct frontend {
     bool isreal;            // Front end stream is real-only
     int bitspersample; // 8, 12 or 16
     bool lock;              // Tuning is locked; clients cannot change
-    
+
     // Limits on usable IF due to aliasing, filtering, etc
     // Less than or equal to +/- samprate/2
     // Straddles 0 Hz for complex, will have same sign for real output from a low IF tuner
@@ -140,7 +140,7 @@ struct demod {
     float foffset;    // Frequency offset Hz (FM, coherent AM, dsb)
     float snr;        // From PLL in linear, moments in FM
   } sig;
-  
+
   float squelch_open;  // squelch open threshold, power ratio
   float squelch_close; // squelch close threshold
   int squelchtail;     // Frames to hold open after loss of SNR
@@ -157,11 +157,11 @@ struct demod {
     // RTP network streaming
     bool silent;       // last packet was suppressed (used to generate RTP mark bit)
     struct rtp_state rtp;
-    
+
     struct sockaddr_storage data_source_address;    // Source address of our data output
     struct sockaddr_storage data_dest_address;      // Dest of our data outputg (typically multicast)
     char data_dest_string[_POSIX_HOST_NAME_MAX+20]; // Allow room for :portnum
-    
+
     int data_fd;    // File descriptor for multicast output
     int rtcp_fd;    // File descriptor for RTP control protocol
     int sap_fd;     // Session announcement protocol (SAP) - experimental
@@ -199,6 +199,7 @@ extern pthread_mutex_t Demod_mutex;
 
 extern int Status_fd;  // File descriptor for receiver status
 extern int Ctl_fd;     // File descriptor for receiving user commands
+extern int Waterfall_fd;  // File descriptor for waterfall
 
 extern char const *Libdir;
 extern char const *Modefile;

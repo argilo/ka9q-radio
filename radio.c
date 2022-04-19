@@ -39,6 +39,8 @@ struct demod *Demod_list; // Contiguous array
 int Demod_list_length; // Length of array
 int Active_demod_count; // Active demods
 
+int Waterfall_fd;  // File descriptor for waterfall
+
 
 // thread for first half of demodulator
 // Preprocessing of samples performed for all demodulators
@@ -84,7 +86,7 @@ void free_demod(struct demod **demod){
       (*demod)->inuse = 0;
       Active_demod_count--;
     }
-    pthread_mutex_unlock(&Demod_mutex);  
+    pthread_mutex_unlock(&Demod_mutex);
     *demod = NULL;
   }
 }
@@ -125,7 +127,10 @@ void *estimate_n0(void *arg){
     if(master->bins > 10000 && (blocknum & 7) != 0)
       continue; // HACK!! Do only 8th block to cut CPU consumption to roughly 1 FM demod on airspy
 #endif
-    
+
+    float waterfall[1000] = {0};
+    int group_size = bincnt / 1000;
+
     // Update average bin powers
     float min_bin_power = INFINITY;
     complex float * const fdomain = master->fdomain[blocknum % ND];
@@ -133,6 +138,7 @@ void *estimate_n0(void *arg){
       int bin = first_bin;
       for(int i=0; i < bincnt; i++){
 	avg_pwrs[i] += (cnrmf(fdomain[bin]) - avg_pwrs[i]) * .02; // tune or auto adjust this?
+  waterfall[i/group_size] += cnrmf(fdomain[bin]);
 	min_bin_power = min(min_bin_power,avg_pwrs[i]);
 	if(++bin == master->bins)
 	  bin = 0;
@@ -143,12 +149,16 @@ void *estimate_n0(void *arg){
       int bin = first_bin;
       for(int i=0; i < bincnt; i++){
 	avg_pwrs[i] = cnrmf(fdomain[bin]);
+  waterfall[i/group_size] += cnrmf(fdomain[bin]);
 	min_bin_power = min(min_bin_power,avg_pwrs[i]);
 	if(++bin == master->bins)
 	  bin = 0;
       }
       init = 1;
     }
+
+    send(Waterfall_fd, waterfall, sizeof(waterfall), 0);
+
     // Not sure of the math here. Doubling N0 when the front end is real seems to give the right result;
     // it was 3dB low without it, probably because there are only half as many bins as in complex
     Frontend.n0 = (Frontend.sdr.isreal ? 2 : 1)
@@ -193,7 +203,7 @@ void *proc_samples(void *arg){
 
     uint8_t const * restrict dp = ntoh_rtp(&pkt.rtp,pkt.content);
     size -= (dp - pkt.content);
-    
+
     if(pkt.rtp.pad){
       // Remove padding
       size -= dp[size-1];
@@ -319,7 +329,7 @@ void *proc_samples(void *arg){
       break;
     case PCM_MONO_PT: // 16 bits big-endian integer real
       if(Frontend.in->input.r != NULL){
-	uint64_t in_energy = 0; // A/D energy accumulator for integer formats only	
+	uint64_t in_energy = 0; // A/D energy accumulator for integer formats only
 	float const inv_gain = SCALE16 / Frontend.sdr.gain;
 	uint16_t const *sp = (uint16_t *)dp;
 	for(int i=0; i<sampcount; i++){
@@ -334,7 +344,7 @@ void *proc_samples(void *arg){
     case REAL_PT8: // 8 bit integer real
       if(Frontend.in->input.r != NULL){
 	float const inv_gain = SCALE8 / Frontend.sdr.gain;
-	uint64_t in_energy = 0; // A/D energy accumulator for integer formats only		
+	uint64_t in_energy = 0; // A/D energy accumulator for integer formats only
 	for(int i=0; i<sampcount; i++){
 	  int16_t const s = (int8_t)*dp++;
 	  in_energy += s * s;
@@ -346,7 +356,7 @@ void *proc_samples(void *arg){
     default: // shuts up lint
     case IQ_PT12:      // two 12-bit signed integers (one complex sample) packed big-endian into 3 bytes
       if(Frontend.in->input.c != NULL){
-	uint64_t in_energy = 0; // A/D energy accumulator for integer formats only	
+	uint64_t in_energy = 0; // A/D energy accumulator for integer formats only
 	float const inv_gain = SCALE12 / Frontend.sdr.gain;
 	for(int i=0; i<sampcount; i++){
 	  int16_t const rs = ((dp[0] << 8) | dp[1]) & 0xfff0;
@@ -363,7 +373,7 @@ void *proc_samples(void *arg){
       break;
     case PCM_STEREO_PT:      // Two 16-bit signed integers, **BIG ENDIAN** (network order)
       if(Frontend.in->input.c != NULL){
-	uint64_t in_energy = 0; // A/D energy accumulator for integer formats only		
+	uint64_t in_energy = 0; // A/D energy accumulator for integer formats only
 	float const inv_gain = SCALE16 / Frontend.sdr.gain;
 	int16_t const *sp = (int16_t *)dp;
 	for(int i=0; i<sampcount; i++){
@@ -381,7 +391,7 @@ void *proc_samples(void *arg){
       break;
     case IQ_PT8:      // Two signed 8-bit integers
       if(Frontend.in->input.c != NULL){
-	uint64_t in_energy = 0; // A/D energy accumulator for integer formats only	
+	uint64_t in_energy = 0; // A/D energy accumulator for integer formats only
 	float const inv_gain = SCALE8 / Frontend.sdr.gain;
 	for(int i=0; i<sampcount; i++){
 	  int16_t const rs = (int8_t)*dp++;
@@ -397,7 +407,7 @@ void *proc_samples(void *arg){
       break;
     }
 
-    
+
   } // end of main loop
 }
 
@@ -415,7 +425,7 @@ int start_demod(struct demod * demod){
 #else
     pthread_cancel(demod->demod_thread);
     pthread_join(demod->demod_thread,NULL);
-#endif    
+#endif
   }
 
   // Start demodulators; only one actually runs at a time
@@ -457,7 +467,7 @@ int kill_demod(struct demod **p){
     pthread_cancel(demod->sap_thread);
     pthread_join(demod->sap_thread,NULL);
   }
-    
+
 #if 0
   // Don't close these as they're often shared across demods
   // Really should keep a reference count so they can be closed when
@@ -538,7 +548,7 @@ double set_first_LO(struct demod const * const demod,double const first_LO){
   int len = bp - packet;
   send(Frontend.input.ctl_fd,packet,len,0);
   return first_LO;
-}  
+}
 
 // Compute noise spectral density - experimental
 float const compute_n0(struct demod const * const demod){
@@ -597,58 +607,58 @@ void *sap_send(void *p){
     char message[1500],*wp;
     int space = sizeof(message);
     wp = message;
-    
+
     *wp++ = 0x20; // SAP version 1, ipv4 address, announce, not encrypted, not compressed
     *wp++ = 0; // No authentication
     *wp++ = id >> 8;
     *wp++ = id & 0xff;
     space -= 4;
-    
+
     // our sending ipv4 address
     struct sockaddr_in const *sin = (struct sockaddr_in *)&demod->output.data_source_address;
     uint32_t *src = (uint32_t *)wp;
     *src = sin->sin_addr.s_addr; // network byte order
     wp += 4;
     space -= 4;
-    
+
     int len = snprintf(wp,space,"application/sdp");
     wp += len + 1; // allow space for the trailing null
     space -= (len + 1);
-    
+
     // End of SAP header, beginning of SDP
-    
+
     // Version v=0 (always)
     len = snprintf(wp,space,"v=0\r\n");
     wp += len;
     space -= len;
-    
+
     {
       // Originator o=
       char hostname[128];
       gethostname(hostname,sizeof(hostname));
-      
+
       struct passwd pwd,*result = NULL;
       char buf[1024];
-      
+
       getpwuid_r(getuid(),&pwd,buf,sizeof(buf),&result);
       len = snprintf(wp,space,"o=%s %lld %d IN IP4 %s\r\n",
 		     result ? result->pw_name : "-",
 		     start_time,sess_version,hostname);
-      
+
       wp += len;
       space -= len;
     }
-    
+
     // s= (session name)
     len = snprintf(wp,space,"s=radio %s\r\n",Frontend.sdr.description);
     wp += len;
     space -= len;
-    
+
     // i= (human-readable session information)
     len = snprintf(wp,space,"i=PCM output stream from ka9q-radio on %s\r\n",Frontend.sdr.description);
     wp += len;
     space -= len;
-    
+
     {
       char mcast[128];
       strlcpy(mcast,formatsock(&demod->output.data_dest_address),sizeof(mcast));
@@ -659,8 +669,8 @@ void *sap_send(void *p){
       len = snprintf(wp,space,"c=IN IP4 %s/%d\r\n",mcast,Mcast_ttl);
       wp += len;
       space -= len;
-    }  
-    
+    }
+
 
 #if 0 // not currently used
     long long current_time;
@@ -675,27 +685,27 @@ void *sap_send(void *p){
     len = snprintf(wp,space,"t=%lld %lld\r\n",start_time,0LL); // unbounded
     wp += len;
     space -= len;
-    
+
     // m = media description
-#if 1  
+#if 1
     {
       // Demod type can change, but not the sample rate
       int mono_type = pt_from_info(demod->output.samprate,1);
       int stereo_type = pt_from_info(demod->output.samprate,2);
       int fm_type = pt_from_info(demod->output.samprate,1);
-      
+
       len = snprintf(wp,space,"m=audio 5004/1 RTP/AVP %d %d %d\r\n",mono_type,stereo_type,fm_type);
       wp += len;
       space -= len;
-      
+
       len = snprintf(wp,space,"a=rtpmap:%d L16/%d/%d\r\n",mono_type,demod->output.samprate,1);
       wp += len;
       space -= len;
-      
+
       len = snprintf(wp,space,"a=rtpmap:%d L16/%d/%d\r\n",stereo_type,demod->output.samprate,2);
       wp += len;
       space -= len;
-      
+
       len = snprintf(wp,space,"a=rtpmap:%d L16/%d/%d\r\n",fm_type,demod->output.samprate,1);
       wp += len;
       space -= len;
@@ -709,12 +719,12 @@ void *sap_send(void *p){
       len = snprintf(wp,space,"m=audio 5004/1 RTP/AVP %d\r\n",type);
       wp += len;
       space -= len;
-      
+
       len = snprintf(wp,space,"a=rtpmap:%d L16/%d/%d\r\n",type,demod->output.samprate,demod->output.channels);
       wp += len;
       space -= len;
     }
-#endif    
+#endif
     send(demod->output.sap_fd,message,wp - message,0);
     sleep(5);
   }

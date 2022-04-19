@@ -81,6 +81,8 @@ pthread_t Status_thread;
 pthread_t Demod_reaper_thread;
 struct sockaddr_storage Metadata_source_address;   // Source of SDR metadata
 struct sockaddr_storage Metadata_dest_address;      // Dest of metadata (typically multicast)b
+struct sockaddr_storage Waterfall_source_address;   // Source of waterfall
+struct sockaddr_storage Waterfall_dest_address;     // Dest of waterfall (typically multicast)
 char Metadata_dest_string[_POSIX_HOST_NAME_MAX+20]; // Allow room for :portnum
 uint64_t Metadata_packets;
 uint32_t Command_tag;
@@ -142,15 +144,15 @@ int main(int argc,char *argv[]){
     }
   }
 
-  
+
   // Graceful signal catch
   signal(SIGPIPE,closedown);
   signal(SIGINT,closedown);
   signal(SIGKILL,closedown);
   signal(SIGQUIT,closedown);
-  signal(SIGTERM,closedown);        
+  signal(SIGTERM,closedown);
   signal(SIGPIPE,SIG_IGN);
-  
+
   char const *configfile;
   if(argc <= optind){
     fprintf(stdout,"Configtable file missing\n");
@@ -159,7 +161,7 @@ int main(int argc,char *argv[]){
   configfile = argv[optind];
   if(Name == NULL)
     Name = argv[optind];
-  
+
   fprintf(stdout,"Loading config file %s...\n",configfile);
   fflush(stdout);
   int n = loadconfig(argv[optind]);
@@ -227,7 +229,7 @@ static int setup_frontend(char const *arg){
       break;
     }
     fprintf(stdout,"Front end control stream %s (%s)\n",Frontend.input.metadata_dest_string,addrtmp);
-  }    
+  }
   // Start status thread - will also listen for SDR commands
   if(Verbose)
     fprintf(stdout,"Starting front end status thread\n");
@@ -257,7 +259,7 @@ static int setup_frontend(char const *arg){
       break;
     }
     fprintf(stdout,"Front end data stream %s\n",addrtmp);
-  }  
+  }
   fprintf(stdout,"Input sample rate %'d Hz, %s; block time %.1f ms, %.1f Hz\n",
 	  Frontend.sdr.samprate,Frontend.sdr.isreal ? "real" : "complex",Blocktime,1000./Blocktime);
   fflush(stdout);
@@ -351,12 +353,29 @@ static int loadconfig(char const * const file){
 	fprintf(stdout,"Can't send status to %s\n",Metadata_dest_string);
       } else {
 	socklen_t len = sizeof(Metadata_source_address);
-	getsockname(Status_fd,(struct sockaddr *)&Metadata_source_address,&len);  
+	getsockname(Status_fd,(struct sockaddr *)&Metadata_source_address,&len);
 	// Same remote socket as status
 	Ctl_fd = setup_mcast(NULL,(struct sockaddr *)&Metadata_dest_address,0,Mcast_ttl,IP_tos,2);
 	if(Ctl_fd < 3)
 	  fprintf(stdout,"can't listen for commands from %s\n",Metadata_dest_string);
       }
+    }
+
+    char *Waterfall_dest_string = "2m-waterfall.local";
+    char service_name[1024];
+    snprintf(service_name,sizeof(service_name),"waterfall (%s)",Waterfall_dest_string);
+    char description[1024];
+    snprintf(description,sizeof(description),"input=%s",input);
+    avahi_start(service_name,"_waterfall._udp",5007,Waterfall_dest_string,ElfHashString(Waterfall_dest_string),description);
+    base_address += 16;
+    char iface[1024];
+    resolve_mcast(Waterfall_dest_string,&Waterfall_dest_address,5007,iface,sizeof(iface));
+    Waterfall_fd = connect_mcast(&Waterfall_dest_address,iface,Mcast_ttl,IP_tos);
+    if(Waterfall_fd < 3){
+      fprintf(stdout,"can't set up PCM output to %s\n",Waterfall_dest_string);
+    } else {
+      socklen_t len = sizeof(Waterfall_source_address);
+      getsockname(Waterfall_fd,(struct sockaddr *)&Waterfall_source_address,&len);
     }
   }
   // Process individual demodulator sections
@@ -450,7 +469,7 @@ static int loadconfig(char const * const file){
 	channels = 2;
       if(config2_getboolean(Modetable,Configtable,mode,global,"mono",0))
 	channels = 1;
-      
+
       if(channels != 1 && channels != 2){
 	fprintf(stdout,"Invalid channel count %d, forcing to 1\n",demod->output.channels);
 	channels = 1;
@@ -476,7 +495,7 @@ static int loadconfig(char const * const file){
       float x = config2_getfloat(Modetable,Configtable,mode,sname,"gain",DEFAULT_GAIN);
       demod->output.gain = dB2voltage(x); // Can be more or less than unity
     }
-    demod->linear.env = config2_getboolean(Modetable,Configtable,mode,sname,"envelope",0);   // default off 
+    demod->linear.env = config2_getboolean(Modetable,Configtable,mode,sname,"envelope",0);   // default off
     demod->linear.pll = config2_getboolean(Modetable,Configtable,mode,sname,"pll",0);        // default off. On also enables squelch!
     demod->linear.square = config2_getboolean(Modetable,Configtable,mode,sname,"square",0);  // default off. On implies PLL on
     if(demod->linear.square)
@@ -538,7 +557,7 @@ static int loadconfig(char const * const file){
       socklen_t len = sizeof(demod->output.data_source_address);
       getsockname(demod->output.data_fd,(struct sockaddr *)&demod->output.data_source_address,&len);
     }
-    
+
     if(SAP_enable){
       // Highly experimental, off by default
       char sap_dest[] = "224.2.127.254:9875"; // sap.mcast.net
@@ -576,7 +595,7 @@ static int loadconfig(char const * const file){
       for(char *tok = strtok_r(freq_list," \t",&saveptr);
 	  tok != NULL;
 	  tok = strtok_r(NULL," \t",&saveptr)){
-	
+
 	double const f = parse_frequency(tok);
 	if(f < 0){
 	  fprintf(stdout,"can't parse frequency %s\n",tok);
@@ -659,7 +678,7 @@ void *rtcp_send(void *arg){
       goto done;
     unsigned char buffer[4096]; // much larger than necessary
     memset(buffer,0,sizeof(buffer));
-    
+
     // Construct sender report
     struct rtcp_sr sr;
     memset(&sr,0,sizeof(sr));
@@ -678,12 +697,12 @@ void *rtcp_send(void *arg){
     sr.rtp_timestamp = 0 + runtime * demod->output.samprate;
     sr.packet_count = demod->output.rtp.seq;
     sr.byte_count = demod->output.rtp.bytes;
-    
+
     unsigned char *dp = gen_sr(buffer,sizeof(buffer),&sr,NULL,0);
 
     // Construct SDES
     struct rtcp_sdes sdes[4];
-    
+
     // CNAME
     char hostname[1024];
     gethostname(hostname,sizeof(hostname));
@@ -701,7 +720,7 @@ void *rtcp_send(void *arg){
     sdes[1].type = NAME;
     strlcpy(sdes[1].message,"KA9Q Radio Program",sizeof(sdes[1].message));
     sdes[1].mlen = strlen(sdes[1].message);
-    
+
     sdes[2].type = EMAIL;
     strlcpy(sdes[2].message,"karn@ka9q.net",sizeof(sdes[2].message));
     sdes[2].mlen = strlen(sdes[2].message);
@@ -709,7 +728,7 @@ void *rtcp_send(void *arg){
     sdes[3].type = TOOL;
     strlcpy(sdes[3].message,"KA9Q Radio Program",sizeof(sdes[3].message));
     sdes[3].mlen = strlen(sdes[3].message);
-    
+
     dp = gen_sdes(dp,sizeof(buffer) - (dp-buffer),demod->output.rtp.ssrc,sdes,4);
 
 
@@ -728,4 +747,3 @@ static void closedown(int a){
   else
     exit(1);
 }
-
