@@ -114,6 +114,10 @@ int main(int argc,char *argv[]){
   int const N = L + M - 1;
 
   complex float * const response = fftwf_alloc_complex(N);
+  if (!response) {
+    fprintf(stdout,"out of memory\n");
+    exit(1);
+  }
   memset(response,0,N*sizeof(response[0]));
   {
     float gain = 1./N; // Compensate for FFT/IFFT scaling
@@ -131,7 +135,7 @@ int main(int argc,char *argv[]){
   window_filter(L,M,response,3.0);
   struct filter_in * filter_in = create_filter_input(L,M,REAL);
   struct filter_out * filter_out = create_filter_output(filter_in,response,L,COMPLEX);
-  
+
 
   while(1){
     int16_t samp[L];
@@ -148,7 +152,7 @@ int main(int argc,char *argv[]){
 
       // Form baseband signal (analytic for SSB, pure real for AM/DSB)
       execute_filter_output(filter_out,0);
-      
+
       int16_t output[2*L];
       for(int i=0;i<L;i++){
 	complex float const c = carrier + step_osc(&osc) * amplitude * filter_out->output.c[i];

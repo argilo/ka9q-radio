@@ -77,8 +77,13 @@ struct filter_in *create_filter_input(int const L,int const M, enum filtertype c
     fprintf(stdout,"out of memory\n");
     exit(1);
   }
-  for(int i=0; i < ND; i++)
+  for(int i=0; i < ND; i++) {
     master->fdomain[i] = fftwf_alloc_complex(bins);
+    if (!master->fdomain[i]) {
+      fprintf(stdout,"out of memory\n");
+      exit(1);
+    }
+  }
 
   assert(master != NULL);
   assert(master != (void *)-1);
@@ -100,6 +105,10 @@ struct filter_in *create_filter_input(int const L,int const M, enum filtertype c
     return NULL;
   case COMPLEX:
     master->input_buffer.c = fftwf_alloc_complex(N);
+    if (!master->input_buffer.c) {
+      fprintf(stdout,"out of memory\n");
+      exit(1);
+    }
     master->input_buffer.r = NULL; // Catch erroneous uses
     assert(malloc_usable_size(master->input_buffer.c) >= N * sizeof(*master->input_buffer.c));
     memset(master->input_buffer.c, 0, (M-1)*sizeof(*master->input_buffer.c)); // Clear earlier state
@@ -109,6 +118,10 @@ struct filter_in *create_filter_input(int const L,int const M, enum filtertype c
   case REAL:
     master->input_buffer.c = NULL;
     master->input_buffer.r = fftwf_alloc_real(N);
+    if (!master->input_buffer.r) {
+      fprintf(stdout,"out of memory\n");
+      exit(1);
+    }
     assert(malloc_usable_size(master->input_buffer.r) >= N * sizeof(*master->input_buffer.r));
     memset(master->input_buffer.r, 0, (M-1)*sizeof(*master->input_buffer.r)); // Clear earlier state
     master->input.r = master->input_buffer.r + M - 1;
@@ -156,8 +169,15 @@ struct filter_out *create_filter_output(struct filter_in * master,complex float 
   case CROSS_CONJ:
     slave->bins = osize; // Same as total number of time domain points
     slave->f_fdomain = fftwf_alloc_complex(slave->bins);
+    if (!slave->f_fdomain) {
+      fprintf(stdout,"out of memory\n");
+      exit(1);
+    }
     slave->output_buffer.c = fftwf_alloc_complex(osize);
-    assert(slave->output_buffer.c != NULL);
+    if (!slave->output_buffer.c) {
+      fprintf(stdout,"out of memory\n");
+      exit(1);
+    }
     slave->output_buffer.r = NULL; // catch erroneous references
     slave->output.c = slave->output_buffer.c + osize - olen;
     slave->rev_plan = fftwf_plan_dft_1d(osize,slave->f_fdomain,slave->output_buffer.c,FFTW_BACKWARD,FFTW_ESTIMATE);
@@ -165,10 +185,16 @@ struct filter_out *create_filter_output(struct filter_in * master,complex float 
   case REAL:
     slave->bins = osize / 2 + 1;
     slave->f_fdomain = fftwf_alloc_complex(slave->bins);
-    assert(slave->f_fdomain != NULL);
+    if (!slave->f_fdomain) {
+      fprintf(stdout,"out of memory\n");
+      exit(1);
+    }
 
     slave->output_buffer.r = fftwf_alloc_real(osize);
-    assert(slave->output_buffer.r != NULL);
+    if (!slave->output_buffer.r) {
+      fprintf(stdout,"out of memory\n");
+      exit(1);
+    }
     slave->output_buffer.c = NULL;
     slave->output.r = slave->output_buffer.r + osize - olen;
     slave->rev_plan = fftwf_plan_dft_c2r_1d(osize,slave->f_fdomain,slave->output_buffer.r,FFTW_ESTIMATE);
@@ -273,6 +299,10 @@ int execute_filter_input(struct filter_in * const f){
   case COMPLEX:
     {
       complex float * const newbuf = fftwf_alloc_complex(N);
+      if (!newbuf) {
+        fprintf(stdout,"out of memory\n");
+        exit(1);
+      }
       memmove(newbuf,f->input_buffer.c + f->ilen,(f->impulse_length-1)*sizeof(*f->input_buffer.c));
       f->input_buffer.c = newbuf;
       f->input.c = f->input_buffer.c + f->impulse_length -1;
@@ -281,6 +311,10 @@ int execute_filter_input(struct filter_in * const f){
   case REAL:
     {
       float * const newbuf = fftwf_alloc_real(N);
+      if (!newbuf) {
+        fprintf(stdout,"out of memory\n");
+        exit(1);
+      }
       memmove(newbuf,f->input_buffer.r + f->ilen,(f->impulse_length-1)*sizeof(*f->input_buffer.r));
       f->input_buffer.r = newbuf;
       f->input.r = f->input_buffer.r + f->impulse_length -1;
@@ -666,6 +700,10 @@ int window_filter(int const L,int const M,complex float * const response,float c
   assert(malloc_usable_size(response) >= N * sizeof(*response));
   // fftw_plan can overwrite its buffers, so we're forced to make a temp. Ugh.
   complex float * const buffer = fftwf_alloc_complex(N);
+  if (!buffer) {
+    fprintf(stdout,"out of memory\n");
+    exit(1);
+  }
   fftwf_plan fwd_filter_plan = fftwf_plan_dft_1d(N,buffer,buffer,FFTW_FORWARD,FFTW_ESTIMATE);
   fftwf_plan rev_filter_plan = fftwf_plan_dft_1d(N,buffer,buffer,FFTW_BACKWARD,FFTW_ESTIMATE);
 
@@ -731,9 +769,15 @@ int window_rfilter(int const L,int const M,complex float * const response,float 
 
   assert(malloc_usable_size(response) >= (N/2+1)*sizeof(*response));
   complex float * const buffer = fftwf_alloc_complex(N/2 + 1); // plan destroys its input
-  assert(buffer != NULL);
+  if (!buffer) {
+    fprintf(stdout,"out of memory\n");
+    exit(1);
+  }
   float * const timebuf = fftwf_alloc_real(N);
-  assert(timebuf != NULL);
+  if (!timebuf) {
+    fprintf(stdout,"out of memory\n");
+    exit(1);
+  }
   fftwf_plan fwd_filter_plan = fftwf_plan_dft_r2c_1d(N,timebuf,buffer,FFTW_ESTIMATE);
   assert(fwd_filter_plan != NULL);
   fftwf_plan rev_filter_plan = fftwf_plan_dft_c2r_1d(N,buffer,timebuf,FFTW_ESTIMATE);
@@ -829,6 +873,10 @@ int set_filter(struct filter_out * const slave,float low,float high,float const 
   float const gain = (slave->out_type == COMPLEX ? 1.0 : M_SQRT1_2) / (float)slave->master->bins;
 
   complex float * const response = fftwf_alloc_complex(slave->bins);
+  if (!response) {
+    fprintf(stdout,"out of memory\n");
+    exit(1);
+  }
   memset(response,0,slave->bins * sizeof(response[0]));
   assert(malloc_usable_size(response) >= (slave->bins) * sizeof(*response));
   for(int n=0; n < slave->bins; n++){
