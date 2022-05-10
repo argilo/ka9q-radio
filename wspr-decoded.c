@@ -385,6 +385,10 @@ struct session *create_session(struct rtp_header *rtp){
   Sessions = sp;
 
   sp->iobuffer = malloc(BUFFERSIZE);
+  if (!sp->iobuffer) {
+    fprintf(stdout,"out of memory\n");
+    exit(1);
+  }
   setbuffer(sp->fp,sp->iobuffer,BUFFERSIZE);
 
   fcntl(fd,F_SETFL,O_NONBLOCK); // Let's see if this keeps us from losing data

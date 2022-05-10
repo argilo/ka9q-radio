@@ -165,6 +165,10 @@ int main(int argc,char * const argv[]){
     // Need a new packet buffer?
     if(!pkt)
       pkt = malloc(sizeof(*pkt));
+    if (!pkt) {
+      fprintf(stdout,"out of memory\n");
+      exit(1);
+    }
     // Zero these out to catch any uninitialized derefs
     pkt->next = NULL;
     pkt->data = NULL;

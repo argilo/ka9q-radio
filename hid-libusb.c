@@ -669,7 +669,15 @@ static void read_callback(struct libusb_transfer *transfer)
 	if (transfer->status == LIBUSB_TRANSFER_COMPLETED) {
 
 		struct input_report *rpt = malloc(sizeof(*rpt));
+		if (!rpt) {
+	    fprintf(stdout,"out of memory\n");
+	    exit(1);
+	  }
 		rpt->data = malloc(transfer->actual_length);
+		if (!rpt->data) {
+	    fprintf(stdout,"out of memory\n");
+	    exit(1);
+	  }
 		memcpy(rpt->data, transfer->buffer, transfer->actual_length);
 		rpt->len = transfer->actual_length;
 		rpt->next = NULL;
@@ -736,6 +744,10 @@ static void *read_thread(void *param)
 
 	/* Set up the transfer object. */
 	buf = malloc(length);
+	if (!buf) {
+    fprintf(stdout,"out of memory\n");
+    exit(1);
+  }
 	dev->transfer = libusb_alloc_transfer(0);
 	libusb_fill_interrupt_transfer(dev->transfer,
 		dev->device_handle,

@@ -428,6 +428,10 @@ struct session *create_session(struct rtp_header *rtp){
     fprintf(stderr,"creating %s\n",sp->filename);
 
   sp->iobuffer = malloc(BUFFERSIZE);
+  if (!sp->iobuffer) {
+    fprintf(stdout,"out of memory\n");
+    exit(1);
+  }
   setbuffer(sp->fp,sp->iobuffer,BUFFERSIZE);
 
   int const fd = fileno(sp->fp);

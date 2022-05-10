@@ -109,7 +109,7 @@ int main(int argc,char *argv[]){
   }
   // Acquire data stream info from status stream
   pthread_create(&Frontend.status_thread,NULL,sdr_status,&Frontend);
-  
+
   // We must acquire a status stream before we can proceed further
   // Segment copied from main.c
   if(Verbose)
@@ -120,7 +120,7 @@ int main(int argc,char *argv[]){
   pthread_mutex_unlock(&Frontend.sdr.status_mutex);
   fprintf(stderr,"Input sample rate %'d Hz, %s\n",
 	  Frontend.sdr.samprate,Frontend.sdr.isreal ? "real" : "complex");
-  
+
   // Input socket for I/Q data from SDR, set from OUTPUT_DEST_SOCKET in SDR metadata
   Frontend.input.data_fd = listen_mcast(&Frontend.input.data_dest_address,NULL);
   if(Frontend.input.data_fd < 3){
@@ -133,7 +133,7 @@ int main(int argc,char *argv[]){
   char filename[PATH_MAX];
   for(suffix=0;suffix<100;suffix++){
     struct stat statbuf;
-    
+
     if(Filedir)
       snprintf(filename,sizeof(filename),"%s/iqrecord-%.1lfHz-%u-%d",Filedir,Frontend.sdr.frequency,Frontend.input.rtp.ssrc,suffix);
     else
@@ -154,13 +154,17 @@ int main(int argc,char *argv[]){
   }
   if(!Quiet)
     fprintf(stderr,"creating file %s\n",filename);
-  
+
   void *iobuffer = malloc(BUFFERSIZE);
+  if (!iobuffer) {
+    fprintf(stdout,"out of memory\n");
+    exit(1);
+  }
   setbuffer(fp,iobuffer,BUFFERSIZE);
-  
+
   int const fd = fileno(fp);
   fcntl(fd,F_SETFL,O_NONBLOCK); // Let's see if this keeps us from losing data
-  
+
   attrprintf(fd,"frequency","%lf",Frontend.sdr.frequency);
   attrprintf(fd,"samplerate","%lu",(unsigned long)Frontend.sdr.samprate);
   attrprintf(fd,"channels","%d",Frontend.sdr.isreal ? 1 : 2);
@@ -173,7 +177,7 @@ int main(int argc,char *argv[]){
   // Don't wait for an inverse resolve that might cause us to lose data
   getnameinfo((struct sockaddr *)&Sender,sizeof(Sender),sender_text,sizeof(sender_text),NULL,0,NI_NOFQDN|NI_DGRAM|NI_NUMERICHOST);
   attrprintf(fd,"multicast","%s",formatsock(&Frontend.input.data_dest_address));
-      
+
   struct timespec ts;
   clock_gettime(CLOCK_REALTIME,&ts);
   attrprintf(fd,"unixstarttime","%ld.%09ld",(long)ts.tv_sec,(long)ts.tv_nsec);
@@ -210,7 +214,7 @@ int main(int argc,char *argv[]){
     }
     if(size <= 0)
       continue; // Bogus RTP header
-    
+
     signed short *samples = (signed short *)dp;
     size -= (dp - buffer);
 
@@ -230,7 +234,6 @@ int main(int argc,char *argv[]){
     t += (double)sample_count / Frontend.sdr.samprate;
   }
 }
- 
+
 void cleanup(void){
 }
-
