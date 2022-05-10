@@ -2,8 +2,10 @@
 // Experimental IIR complex notch filter
 struct notchfilter *notch_create(double const f,float const bw){
   struct notchfilter *nf = calloc(1,sizeof(struct notchfilter));
-  if(nf == NULL)
-    return NULL;
+  if (!nf) {
+    fprintf(stdout,"out of memory\n");
+    exit(1);
+  }
 
   nf->osc_phase = 1;
   nf->osc_step = cispi(2*f);

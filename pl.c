@@ -57,7 +57,7 @@ static char *Mcast_address_text[MAX_MCAST];
 //     94.8,  97.4,
 
 // Not in Icom 706MKIIG
-// 150.0, 213.8, 221.3, 237.1, 245.5, 
+// 150.0, 213.8, 221.3, 237.1, 245.5,
 
 // All the tones from various groups, including special NATO 150 Hz tone
 static float PL_tones[] = {
@@ -76,7 +76,7 @@ static float DTMF_low_tones[] = { 697, 770, 852, 941 };
 static float DTMF_high_tones[] = { 1209, 1336, 1477, 1633 };
 
 static char DTMF_matrix[4][4] = {   // indexed by [low][high]
-  { '1', '2', '3', 'A' },			  
+  { '1', '2', '3', 'A' },
   { '4', '5', '6', 'B' },
   { '7', '8', '9', 'C' },
   { '*', '0', '#', 'D' },
@@ -89,9 +89,9 @@ static struct session *Sessions;
 
 struct session {
   struct session *prev;       // Linked list pointers
-  struct session *next; 
+  struct session *next;
   int type;                 // input RTP type (10,11)
-  
+
   struct sockaddr sender;
   char addr[NI_MAXHOST];    // RTP Sender IP address
   char port[NI_MAXSERV];    // RTP Sender source port
@@ -109,7 +109,7 @@ struct session {
 
   float dtmf_tot_energy;
   complex float dtmf_low_integrators[4];
-  complex float dtmf_high_integrators[4];  
+  complex float dtmf_high_integrators[4];
   struct osc dtmf_low_osc[4];
   struct osc dtmf_high_osc[4];
 
@@ -158,7 +158,7 @@ int main(int argc,char * const argv[]){
     case 'I':
       if(Nfds == MAX_MCAST){
 	fprintf(stderr,"Too many multicast addresses; max %d\n",MAX_MCAST);
-      } else 
+      } else
 	Mcast_address_text[Nfds++] = optarg;
       break;
     case 'T':
@@ -177,7 +177,7 @@ int main(int argc,char * const argv[]){
   for(int i=optind; i < argc; i++){
     if(Nfds == MAX_MCAST){
       fprintf(stderr,"Too many multicast addresses; max %d\n",MAX_MCAST);
-    } else 
+    } else
       Mcast_address_text[Nfds++] = argv[i];
   }
   // Set up multicast
@@ -247,11 +247,11 @@ int main(int argc,char * const argv[]){
 	rtp_hdr.pad = 0;
       }
       if(size <= 0) continue; // Bogus RTP header?
-      
+
       // Detect and handle stereo?
       int const samprate = samprate_from_pt(rtp_hdr.type);
       if(samprate == 0)	continue;
-      
+
       struct session *sp = lookup_session(&sender,rtp_hdr.ssrc);
       if(sp == NULL){
 	sp = create_session(&sender,rtp_hdr.ssrc,rtp_hdr.seq,rtp_hdr.timestamp);
@@ -287,7 +287,7 @@ int main(int argc,char * const argv[]){
       int const samples_skipped = rtp_process(&sp->rtp_state_in,&rtp_hdr,sampcount);
       if(samples_skipped < 0) continue;
 
-      
+
       int16_t const *sampp = (int16_t *)dp;
       while(sampcount-- > 0){
 	// For each sample, run the local oscillators and integrators
@@ -307,7 +307,7 @@ int main(int argc,char * const argv[]){
 	}
       }
 #if 0
-	
+
       char const dtmf_digit = process_dtmf(sp,samp);
       if(dtmf_digit == -1)
 	continue;
@@ -344,9 +344,12 @@ static struct session *lookup_session(const struct sockaddr *sender,const uint32
 static struct session *create_session(struct sockaddr const *sender,uint32_t ssrc,uint16_t seq,uint32_t timestamp){
   struct session *sp;
 
-  if((sp = calloc(1,sizeof(*sp))) == NULL)
-    return NULL; // Shouldn't happen on modern machines!
-  
+  sp = calloc(1,sizeof(*sp));
+  if (!sp) {
+    fprintf(stdout,"out of memory\n");
+    exit(1);
+  }
+
   // Initialize entry
   getnameinfo((struct sockaddr *)sender,sizeof(*sender),sp->addr,sizeof(sp->addr),
 	      sp->port,sizeof(sp->port),NI_NOFQDN|NI_DGRAM);
@@ -367,7 +370,7 @@ static struct session *create_session(struct sockaddr const *sender,uint32_t ssr
 static int close_session(struct session *sp){
   if(sp == NULL)
     return -1;
-  
+
   // Remove from linked list
   if(sp->next != NULL)
     sp->next->prev = sp->prev;
@@ -396,7 +399,7 @@ static float process_pl(struct session * const sp,complex float const samp){
 
   sp->pl_audio_count = 0;
   // NBFM nominal bandwidth is 16 kHz, so a (slow) deviation of +/- 8 kHz will give 0 dB audio
-  // PL deviation is nominally > 600 Hz or -22.5 dB 
+  // PL deviation is nominally > 600 Hz or -22.5 dB
   // Should calculate this analytically from specified minimum tone deviation (500 Hz?) and audio path gain
   sp->strongest_tone_energy = 0.005;
   sp->strongest_tone_index = -1;
@@ -428,7 +431,7 @@ static char process_dtmf(struct session *sp,complex float samp){
 
   sp->dtmf_audio_count = 0;
   const float min_tone_level = 0.1; // Each tone must be above -10 dBFS
-  
+
   int low_tone_index = -1;
   float low_tone_snr = 0;
   float low_tone_energy = 0; // Set this to a minimum threshold

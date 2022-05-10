@@ -23,7 +23,7 @@
 #include "misc.h"
 #include "filter.h"
 
-int Nthreads = 1; 
+int Nthreads = 1;
 
 static inline int modulo(int x,int const m){
   x = x < 0 ? x + m : x;
@@ -73,6 +73,10 @@ struct filter_in *create_filter_input(int const L,int const M, enum filtertype c
 
 
   struct filter_in * const master = calloc(1,sizeof(struct filter_in));
+  if (!master) {
+    fprintf(stdout,"out of memory\n");
+    exit(1);
+  }
   for(int i=0; i < ND; i++)
     master->fdomain[i] = fftwf_alloc_complex(bins);
 
@@ -124,24 +128,26 @@ struct filter_out *create_filter_output(struct filter_in * master,complex float 
   assert(olen > 0);
   if(olen > master->ilen)
     return NULL; // Interpolation not yet supported
-  
+
   struct filter_out * const slave = calloc(1,sizeof(*slave));
-  if(slave == NULL)
-    return NULL;
+  if (!slave) {
+    fprintf(stdout,"out of memory\n");
+    exit(1);
+  }
   // Share all but output fft bins, response, output and output type
   slave->master = master;
   slave->out_type = out_type;
   slave->olen = olen;
-  
+
   float const overlap = (float)(master->ilen + master->impulse_length - 1) / master->ilen; // Total FFT time points / used time points
   int const osize = round(olen * overlap); // Total number of time-domain FFT points including overlap
-  
+
   slave->response = response;
   if(response != NULL)
     slave->noise_gain = noise_gain(slave);
   else
     slave->noise_gain = NAN;
-  
+
   // Usually too small to benefit from multithreading
   fftwf_plan_with_nthreads(1);
   switch(slave->out_type){
@@ -159,8 +165,8 @@ struct filter_out *create_filter_output(struct filter_in * master,complex float 
   case REAL:
     slave->bins = osize / 2 + 1;
     slave->f_fdomain = fftwf_alloc_complex(slave->bins);
-    assert(slave->f_fdomain != NULL);    
-    
+    assert(slave->f_fdomain != NULL);
+
     slave->output_buffer.r = fftwf_alloc_real(osize);
     assert(slave->output_buffer.r != NULL);
     slave->output_buffer.c = NULL;
@@ -189,7 +195,7 @@ void *run_fft(void *p){
     pthread_mutex_lock(&f->queue_mutex);
     while(f->job_queue == NULL)
       pthread_cond_wait(&f->queue_cond,&f->queue_mutex);
-    
+
     struct fft_job *job = f->job_queue;
     f->job_queue = job->next;
     int const jobnum = f->jobnum++;
@@ -241,6 +247,10 @@ int execute_filter_input(struct filter_in * const f){
   // We now use the FFTW3 functions that specify the input and output arrays
   // Execute the FFT in a detached thread so we can process more input data while the FFT executes
   struct fft_job * const job = calloc(1,sizeof(struct fft_job));
+  if (!job) {
+    fprintf(stdout,"out of memory\n");
+    exit(1);
+  }
 
   switch(f->in_type){
   default:
@@ -312,7 +322,7 @@ int execute_filter_output_idle(struct filter_out * const slave){
     slave->blocknum = master->blocknum;
   } else
     slave->blocknum++;
-  pthread_mutex_unlock(&master->filter_mutex); 
+  pthread_mutex_unlock(&master->filter_mutex);
   return 0;
 }
 
@@ -331,7 +341,7 @@ int execute_filter_output(struct filter_out * const slave,int const rotate){
   assert(slave->out_type != NONE);
   assert(master->in_type != NONE);
   assert(master->fdomain != NULL);
-  assert(slave->f_fdomain != NULL);  
+  assert(slave->f_fdomain != NULL);
   assert(slave->response != NULL);
   assert(master->bins > 0);
   assert(slave->bins > 0);
@@ -352,7 +362,7 @@ int execute_filter_output(struct filter_out * const slave,int const rotate){
   }
   complex float const * const fdomain = master->fdomain[slave->blocknum % ND];
   slave->blocknum++;
-  pthread_mutex_unlock(&master->filter_mutex); 
+  pthread_mutex_unlock(&master->filter_mutex);
 
   assert(fdomain != NULL);
 
@@ -385,14 +395,14 @@ int execute_filter_output(struct filter_out * const slave,int const rotate){
       mi += master->bins; // start in neg region of master
     do {    // At least one master bin is in range
       assert(si >= 0 && si < slave->bins);
-      assert(mi >= 0 && mi < master->bins);      
+      assert(mi >= 0 && mi < master->bins);
       slave->f_fdomain[si] = slave->response[si] * fdomain[mi++];
       si++; // Can't imbed in previous statement; ambiguous
       if(mi == master->bins)
 	mi = 0; // Not necessary if it starts positive, and master->bins > slave->bins?
       if(si == slave->bins)
 	si = 0;
-      if(si == slave->bins/2) 
+      if(si == slave->bins/2)
 	goto mult_done; // All done
     } while(mi != master->bins/2); // Until we hit high end of master
     for(;si != slave->bins/2;){
@@ -422,7 +432,7 @@ int execute_filter_output(struct filter_out * const slave,int const rotate){
       slave->f_fdomain[si] = result;
     }
   } else if(master->in_type == REAL && slave->out_type != REAL){
-    // Real->complex 
+    // Real->complex
     // This can be tricky. We treat the input as complex with Hermitian symmetry (both positive and negative spectra)
     // We don't allow the output to span the zero input frequency range as this doesn't seem useful
     // The most common case is that m is entirely in range and always < 0 or > 0
@@ -460,7 +470,7 @@ int execute_filter_output(struct filter_out * const slave,int const rotate){
 	mi++;
       }
       for(; mi < 0 && i < slave->bins; i++){
-	slave->f_fdomain[si] = slave->response[si] * conjf(fdomain[-mi]); // neg freq component is conjugate of corresponding positive freq      
+	slave->f_fdomain[si] = slave->response[si] * conjf(fdomain[-mi]); // neg freq component is conjugate of corresponding positive freq
 	si++;
 	si = (si == slave->bins) ? 0 : si;
 	mi++;
@@ -475,7 +485,7 @@ int execute_filter_output(struct filter_out * const slave,int const rotate){
 	slave->f_fdomain[si] = 0;
 	si++;
 	si = (si == slave->bins) ? 0 : si;
-      }    
+      }
 #else    // slower
       for(int i = 0; i < slave->bins; i++){
 	complex float result = 0;
@@ -487,7 +497,7 @@ int execute_filter_output(struct filter_out * const slave,int const rotate){
 	si++;
 	si = (si == slave->bins) ? 0 : si;
 	mi++;
-      }	  
+      }
 #endif
     }
   }
@@ -500,7 +510,7 @@ int execute_filter_output(struct filter_out * const slave,int const rotate){
     for(int p=1,dn=slave->bins-1; p < slave->bins; p++,dn--){
       complex float const pos = slave->f_fdomain[p];
       complex float const neg = slave->f_fdomain[dn];
-      
+
       slave->f_fdomain[p]  = pos + conjf(neg);
       slave->f_fdomain[dn] = neg - conjf(pos);
     }
@@ -512,6 +522,10 @@ int execute_filter_output(struct filter_out * const slave,int const rotate){
 // Send terminate job to FFT thread
 static void terminate_fft(struct filter_in *f){
   struct fft_job * const job = calloc(1,sizeof(struct fft_job));
+  if (!job) {
+    fprintf(stdout,"out of memory\n");
+    exit(1);
+  }
 
   job->input = NULL;
   job->terminate = 1;
@@ -539,7 +553,7 @@ int delete_filter_input(struct filter_in ** p){
 
   if(master == NULL)
     return -1;
-  
+
   if(master->fft_thread){
     terminate_fft(master);
     pthread_join(master->fft_thread,NULL);
@@ -561,9 +575,9 @@ int delete_filter_output(struct filter_out **p){
 
   if(slave == NULL)
     return 1;
-  
+
   pthread_mutex_destroy(&slave->response_mutex);
-  fftwf_destroy_plan(slave->rev_plan);  
+  fftwf_destroy_plan(slave->rev_plan);
   fftwf_free(slave->output_buffer.c);
   fftwf_free(slave->response);
   fftwf_free(slave->f_fdomain);
@@ -664,7 +678,7 @@ int window_filter(int const L,int const M,complex float * const response,float c
   for(int n=0; n < N; n++){
     fprintf(stderr,"%d %lg %lg\n",n,crealf(buffer[n]),cimagf(buffer[n]));
   }
-#endif  
+#endif
 
   float kaiser_window[M];
   make_kaiser(kaiser_window,M,beta);
@@ -672,7 +686,7 @@ int window_filter(int const L,int const M,complex float * const response,float c
 #if 0
   for(int m = 0; m < M; m++)
     fprintf(stderr,"kaiser[%d] = %g\n",m,kaiser_window[m]);
-#endif  
+#endif
 
   // Round trip through FFT/IFFT scales by N
   float const gain = 1./N;
@@ -687,7 +701,7 @@ int window_filter(int const L,int const M,complex float * const response,float c
   for(int n=0;n< M;n++)
     fprintf(stderr,"%d %lg %lg\n",n,crealf(buffer[n]),cimagf(buffer[n]));
 #endif
-  
+
   // Now back to frequency domain
   fftwf_execute(fwd_filter_plan);
   fftwf_destroy_plan(fwd_filter_plan);
@@ -743,7 +757,7 @@ int window_rfilter(int const L,int const M,complex float * const response,float 
   float const gain = 1./N;
   for(int n = M - 1; n >= 0; n--)
     timebuf[n] = timebuf[(n-M/2+N)%N] * kaiser_window[n] * gain;
-  
+
   // Pad with zeroes on right side
   memset(timebuf+M,0,(N-M)*sizeof(*timebuf));
 #if 0
@@ -751,7 +765,7 @@ int window_rfilter(int const L,int const M,complex float * const response,float 
   for(int n=0;n< M;n++)
     printf("%d %lg\n",n,timebuf[n]);
 #endif
-  
+
   // Now back to frequency domain
   fftwf_execute(fwd_filter_plan);
   fftwf_destroy_plan(fwd_filter_plan);
@@ -846,5 +860,3 @@ int set_filter(struct filter_out * const slave,float low,float high,float const 
 
   return 0;
 }
-
-

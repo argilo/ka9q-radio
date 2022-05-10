@@ -92,7 +92,7 @@ struct sdrstate {
 
   uint64_t commands; // Command counter
   uint32_t command_tag; // Last received command tag
-  
+
   char const *data_dest;
   struct sockaddr_storage output_data_source_address; // Multicast output socket
   struct sockaddr_storage output_data_dest_address; // Multicast output socket
@@ -146,7 +146,7 @@ int main(int argc,char *argv[]){
     else
       break;
   }
-#endif  
+#endif
 
 
   Locale = getenv("LANG");
@@ -157,6 +157,10 @@ int main(int argc,char *argv[]){
   setlinebuf(stdout);
 
   struct sdrstate * const sdr = (struct sdrstate *)calloc(1,sizeof(struct sdrstate));
+  if (!sdr) {
+    fprintf(stdout,"out of memory\n");
+    exit(1);
+  }
   sdr->rtp_type = AIRSPY_PACKED;
   double init_frequency = 0;
 
@@ -331,13 +335,13 @@ int main(int argc,char *argv[]){
   airspy_set_mixer_agc(sdr->device,mixer_agc);
   if(mixer_agc)
     Software_agc = 0;
-  
+
   int const lna_gain = config_getint(Dictionary,Name,"lna-gain",-1);
   if(lna_gain != -1){
     sdr->lna_gain = lna_gain;
     airspy_set_lna_gain(sdr->device,lna_gain);
     Software_agc = 0;
-  }      
+  }
   int const mixer_gain = config_getint(Dictionary,Name,"mixer-gain",-1);
   if(mixer_gain != -1){
     sdr->mixer_gain = mixer_gain;
@@ -362,7 +366,7 @@ int main(int argc,char *argv[]){
   sdr->antenna_bias = config_getboolean(Dictionary,Name,"bias",0);
   ret = airspy_set_rf_bias(sdr->device,sdr->antenna_bias);
   assert(ret == AIRSPY_SUCCESS);
-  
+
   fprintf(stdout,"Software AGC %d; LNA AGC %d, Mix AGC %d, LNA gain %d, Mix gain %d, VGA gain %d, gainstep %d, bias tee %d\n",
 	  Software_agc,lna_agc,mixer_agc,sdr->lna_gain,sdr->mixer_gain,sdr->if_gain,gainstep,sdr->antenna_bias);
 
@@ -370,7 +374,7 @@ int main(int argc,char *argv[]){
   // unless one has been set explicitly
   // 32768 is 1/3 of the buffer returned by the airspy library callback function
   // IPv4 packets are limited to 64KB, IPv6 can go larger with the Jumbo Payload option
-  
+
   RTP_ttl = config_getint(Dictionary,Name,"data-ttl",0); // Default to TTL=0
   Status_ttl = config_getint(Dictionary,Name,"status-ttl",1); // Default 1 for status; much lower bandwidth
   {
@@ -378,7 +382,7 @@ int main(int argc,char *argv[]){
     if(x != -1){
       sdr->blocksize = x;
     } else if(RTP_ttl == 0)
-      sdr->blocksize = 32768; 
+      sdr->blocksize = 32768;
     else
       sdr->blocksize = 960;
   }
@@ -422,7 +426,7 @@ int main(int argc,char *argv[]){
   }
   // Multicast output interface for both data and status
   Iface = config_getstring(Dictionary,Name,"iface",NULL);
-  
+
   {
     // Start Avahi client that will maintain our mDNS registrations
     // Service name, if present, must be unique
@@ -489,8 +493,8 @@ int main(int argc,char *argv[]){
   signal(SIGINT,closedown);
   signal(SIGKILL,closedown);
   signal(SIGQUIT,closedown);
-  signal(SIGTERM,closedown);        
-  
+  signal(SIGTERM,closedown);
+
   if(sdr->status)
     pthread_create(&sdr->display_thread,NULL,display,sdr);
 
@@ -516,7 +520,7 @@ void *ncmd(void *arg){
   pthread_setname("airspy-cmd");
   assert(arg != NULL);
   struct sdrstate * const sdr = (struct sdrstate *)arg;
-  if(sdr->status_sock == -1 || sdr->nctl_sock == -1) 
+  if(sdr->status_sock == -1 || sdr->nctl_sock == -1)
     return NULL; // Nothing to do
 
   while(1){
@@ -552,11 +556,11 @@ void *display(void *arg){
 
     if(stat_point != -1)
       fseeko(sdr->status,stat_point,SEEK_SET);
-    
+
     fprintf(sdr->status,"%'-15.0lf%4d%4d%7d%6d%c",
 	    sdr->frequency,
 	    sdr->gainstep,
-	    sdr->lna_gain,	    
+	    sdr->lna_gain,
 	    sdr->mixer_gain,
 	    sdr->if_gain,
 	    eol);
@@ -572,14 +576,14 @@ void decode_airspy_commands(struct sdrstate *sdr,unsigned char *buffer,int lengt
   while(cp - buffer < length){
     int ret __attribute__((unused)); // Won't be used when asserts are disabled
     enum status_type const type = *cp++; // increment cp to length field
-    
+
     if(type == EOL)
       break; // End of list
-    
+
     unsigned int const optlen = *cp++;
     if(cp - buffer + optlen >= length)
       break; // Invalid length
-    
+
     switch(type){
     case EOL: // Shouldn't get here
       break;
@@ -614,20 +618,20 @@ void decode_airspy_commands(struct sdrstate *sdr,unsigned char *buffer,int lengt
       break;
     }
     cp += optlen;
-  }    
-}  
+  }
+}
 
 void send_airspy_status(struct sdrstate *sdr,int full){
   sdr->output_metadata_packets++;
 
   unsigned char packet[2048],*bp;
   bp = packet;
-  
+
   *bp++ = 0;   // Command/response = response
-  
+
   encode_int32(&bp,COMMAND_TAG,sdr->command_tag);
   encode_int64(&bp,CMD_CNT,sdr->commands);
-  
+
   struct timespec now;
   clock_gettime(CLOCK_REALTIME,&now);
   long long timestamp = ((now.tv_sec - UNIX_EPOCH + GPS_UTC_OFFSET) * 1000000000LL + now.tv_nsec);
@@ -734,7 +738,7 @@ int rx_callback(airspy_transfer *transfer){
   rtp.ssrc = sdr->rtp.ssrc;
 
   uint8_t buffer[128]; // larger than biggest possible RTP header
-  
+
   // Use scatter-gather to avoid copying data
   // Unchanging fields are set here to move them out of the loop
   struct iovec iov[2];
@@ -754,20 +758,20 @@ int rx_callback(airspy_transfer *transfer){
     rtp.seq = sdr->rtp.seq++;
     rtp.timestamp = sdr->rtp.timestamp;
     uint8_t * const dp = hton_rtp(buffer,&rtp);
-    
+
     iov[0].iov_len = dp - buffer;
     iov[1].iov_base = idp;
     iov[1].iov_len = (chunk * 3) / 2;
 
     idp += iov[1].iov_len;
-    
+
     if(sendmsg(sdr->data_sock,&msg,0) == -1){
       fprintf(stdout,"send: %s\n",strerror(errno));
       //      usleep(100000); // inject a delay to avoid filling the log
     } else {
       sdr->rtp.packets++;
       sdr->rtp.bytes += iov[0].iov_len + iov[1].iov_len;
-    }  
+    }
     sdr->rtp.timestamp += chunk; // real-only samples
     samples -= chunk;
   }
@@ -787,7 +791,7 @@ double true_freq(uint64_t freq_hz){
 
   // Clock divider set to 2 for the best resolution
   uint32_t const pll_ref = 25000000u / 2; // 12.5 MHz
-  
+
   // Find divider to put VCO = f*2^(d+1) in range VCO_MIN to VCO_MAX
   //          MHz             step, Hz
   // 0: 885.0     1770.0      190.735
@@ -804,12 +808,12 @@ double true_freq(uint64_t freq_hz){
   }
   if(div_num > MAX_DIV)
     return 0; // Frequency out of range
-  
+
   // r = PLL programming bits: Nint in upper 16 bits, Nfract in lower 16 bits
   // Freq steps are pll_ref / 2^(16 + div_num) Hz
   // Note the '+ (pll_ref >> 1)' term simply rounds the division to the nearest integer
   uint32_t const r = ((freq_hz << (div_num + 16)) + (pll_ref >> 1)) / pll_ref;
-  
+
   // This is a puzzle; is it related to spur suppression?
   double const offset = 0.25;
   // Compute true frequency
@@ -880,5 +884,3 @@ static void set_gain(struct sdrstate *sdr,int gainstep){
 	     sdr->lna_gain,sdr->mixer_gain,sdr->if_gain);
   }
 }
-
-

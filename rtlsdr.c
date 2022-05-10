@@ -106,7 +106,7 @@ struct sdrstate {
 
   uint64_t commands; // Command counter
   uint32_t command_tag; // Last received command tag
-  
+
   char *data_dest;
   struct sockaddr_storage output_data_source_address; // Multicast output socket
   struct sockaddr_storage output_data_dest_address; // Multicast output socket
@@ -137,7 +137,7 @@ static struct option Options[] =
     {"frequency", required_argument, NULL, 'f'},
     {"tos", required_argument, NULL, 'p'},
     {"iptos", required_argument, NULL, 'p'},
-    {"ip-tos", required_argument, NULL, 'p'},    
+    {"ip-tos", required_argument, NULL, 'p'},
     {"samprate", required_argument, NULL, 'r'},
     {"samplerate", required_argument, NULL, 'r'},
     {"status-ttl", required_argument, NULL, 't'},
@@ -167,7 +167,7 @@ int main(int argc,char *argv[]){
     else
       break;
   }
-#endif  
+#endif
 
   Locale = getenv("LANG");
   if(Locale == NULL || strlen(Locale) == 0)
@@ -177,6 +177,10 @@ int main(int argc,char *argv[]){
   setlinebuf(stdout);
 
   struct sdrstate * const sdr = (struct sdrstate *)calloc(1,sizeof(struct sdrstate));
+  if (!sdr) {
+    fprintf(stdout,"out of memory\n");
+    exit(1);
+  }
   sdr->blocksize = DEFAULT_BLOCKSIZE;
   sdr->samprate = DEFAULT_SAMPRATE;
 
@@ -242,10 +246,10 @@ int main(int argc,char *argv[]){
   for(int i=0; i < device_count; i++){
     char manufacturer[256],product[256],serial[256];
     rtlsdr_get_device_usb_strings(i,manufacturer,product,serial);
-    
+
     fprintf(stderr,"RTL-SDR %d (%s): %s %s %s\n",i,rtlsdr_get_device_name(i),
 	    manufacturer,product,serial);
-  }      
+  }
   // Open
   int ret = rtlsdr_open(&sdr->device,Dev);
   if(ret < 0){
@@ -275,7 +279,7 @@ int main(int argc,char *argv[]){
     sdr->holdoff_counter = HOLDOFF_TIME;
   } else
     rtlsdr_set_tuner_gain_mode(sdr->device,0); // auto gain mode (i.e., the firmware does it)
-  
+
   ret = rtlsdr_set_bias_tee(sdr->device,sdr->antenna_bias);
 
   rtlsdr_set_direct_sampling(sdr->device, 0); // That's for HF
@@ -328,7 +332,7 @@ int main(int argc,char *argv[]){
     }
     socklen_t len = sizeof(sdr->output_data_source_address);
     getsockname(sdr->data_sock,(struct sockaddr *)&sdr->output_data_source_address,&len);
-  
+
     resolve_mcast(sdr->metadata_dest,&sdr->output_metadata_dest_address,DEFAULT_STAT_PORT,iface,sizeof(iface));
     sdr->status_sock = connect_mcast(&sdr->output_metadata_dest_address,iface,Status_ttl,IP_tos);
     if(sdr->status_sock <= 0){
@@ -372,8 +376,8 @@ int main(int argc,char *argv[]){
   signal(SIGINT,closedown);
   signal(SIGKILL,closedown);
   signal(SIGQUIT,closedown);
-  signal(SIGTERM,closedown);        
-  
+  signal(SIGTERM,closedown);
+
   if(sdr->status)
     pthread_create(&sdr->display_thread,NULL,display,sdr);
 
@@ -392,7 +396,7 @@ void *ncmd(void *arg){
   pthread_setname("rtlsdr-cmd");
   assert(arg != NULL);
   struct sdrstate * const sdr = (struct sdrstate *)arg;
-  if(sdr->status_sock == -1 || sdr->nctl_sock == -1) 
+  if(sdr->status_sock == -1 || sdr->nctl_sock == -1)
     return NULL; // Nothing to do
 
   int counter = 0;
@@ -418,13 +422,13 @@ void *ncmd(void *arg){
 	continue; // Ignore our own status messages
       sdr->commands++;
       decode_rtlsdr_commands(sdr,cp,length-1);
-    }      
+    }
     sdr->output_metadata_packets++;
     send_rtlsdr_status(sdr,(counter == 0));
     if(counter-- <= 0)
       counter = 10;
 
-    if(AGC)    
+    if(AGC)
       do_rtlsdr_agc(sdr);
   }
 }
@@ -451,7 +455,7 @@ void *display(void *arg){
 
     if(stat_point != -1)
       fseeko(sdr->status,stat_point,SEEK_SET);
-    
+
     fprintf(sdr->status,"%'-15.0lf%4d%4d%7d%6d%'12.1f%'6.1f%'6.1f%'16d    %c",
 	    sdr->frequency,
 	    0,0,0,0,
@@ -473,14 +477,14 @@ void decode_rtlsdr_commands(struct sdrstate *sdr,unsigned char *buffer,int lengt
   while(cp - buffer < length){
     int ret __attribute__((unused)); // Won't be used when asserts are disabled
     enum status_type type = *cp++; // increment cp to length field
-    
+
     if(type == EOL)
       break; // End of list
-    
+
     unsigned int optlen = *cp++;
     if(cp - buffer + optlen >= length)
       break; // Invalid length
-    
+
     switch(type){
     case EOL: // Shouldn't get here
       break;
@@ -500,19 +504,19 @@ void decode_rtlsdr_commands(struct sdrstate *sdr,unsigned char *buffer,int lengt
       break;
     }
     cp += optlen;
-  }    
-}  
+  }
+}
 
 void send_rtlsdr_status(struct sdrstate *sdr,int full){
   unsigned char packet[2048],*bp;
   memset(packet,0,sizeof(packet));
   bp = packet;
-  
+
   *bp++ = 0;   // Command/response = response
-  
+
   encode_int32(&bp,COMMAND_TAG,sdr->command_tag);
   encode_int64(&bp,CMD_CNT,sdr->commands);
-  
+
   {
     struct timespec now;
     clock_gettime(CLOCK_REALTIME,&now);
@@ -564,7 +568,7 @@ void rx_callback(unsigned char *buf, uint32_t len, void *ctx){
   uint8_t *idp = (uint8_t *)buf;
   long long output_energy = 0;
   struct sdrstate * const sdr = (struct sdrstate *)ctx;
-  
+
   struct rtp_header rtp;
   memset(&rtp,0,sizeof(rtp));
   rtp.version = RTP_VERS;
@@ -573,24 +577,24 @@ void rx_callback(unsigned char *buf, uint32_t len, void *ctx){
 
   while(samples > 0){
     int chunk = min(samples,sdr->blocksize);
-    
+
     rtp.seq = sdr->rtp.seq++;
     rtp.timestamp = sdr->rtp.timestamp;
-    
+
     unsigned char buffer[Bufsize];
     unsigned char *dp = buffer;
-    
+
     dp = hton_rtp(dp,&rtp);
-    
+
     for(int i=0;i < chunk; i += 1){
       // Samples are excess-128 integers, which are always positive
       // Convert to unbiased signed integers
       int s = *idp++;
       s -= 127;
-      
+
 #if REMOVE_DC
       samp_sum += s; // Accumulate average DC values
-      
+
       s -= sdr->DC;   // remove smoothed DC offset (which can be fractional)
 #endif
       output_energy += s * s;
@@ -603,13 +607,13 @@ void rx_callback(unsigned char *buf, uint32_t len, void *ctx){
     } else {
       sdr->rtp.packets++;
       sdr->rtp.bytes += (dp - buffer);
-    }  
-    sdr->rtp.timestamp += chunk/2; // complex samples      
+    }
+    sdr->rtp.timestamp += chunk/2; // complex samples
     samples -= chunk;
   }
   // Update power estimate
   sdr->power = output_energy / (len * 256. * 256.);
-  
+
 #if REMOVE_DC
    sdr->DC += DC_alpha * (samp_sum - sdr->DC*sdr->blocksize);
 #endif
@@ -618,7 +622,7 @@ void do_rtlsdr_agc(struct sdrstate *sdr){
   assert(sdr != NULL);
   if(!AGC)
     return; // Execute only in software AGC mode
-    
+
   if(--sdr->holdoff_counter == 0){
     sdr->holdoff_counter = HOLDOFF_TIME;
     float powerdB = 10*log10f(sdr->power);
@@ -656,13 +660,13 @@ double true_freq(uint64_t freq){
   uint8_t refdiv2 = 0;
   uint8_t ni, si, nint, vco_fine_tune, val;
   uint8_t data[5];
-  
+
   /* Frequency in kHz */
   freq_khz = (freq + 500) / 1000;
   //  pll_ref = priv->cfg->xtal;
   pll_ref = 28800000;
   pll_ref_khz = (pll_ref + 500) / 1000;
-  
+
   /* Calculate divider */
   while (mix_div <= 64) {
     if (((freq_khz * mix_div) >= vco_min) &&
@@ -676,14 +680,14 @@ double true_freq(uint64_t freq){
     }
     mix_div = mix_div << 1;
   }
-  
+
   vco_freq = (uint64_t)freq * (uint64_t)mix_div;
   nint = vco_freq / (2 * pll_ref);
   vco_fra = (vco_freq - 2 * pll_ref * nint) / 1000;
 
   ni = (nint - 13) / 4;
   si = nint - 4 * ni - 13;
-  
+
   /* sdm calculator */
   while (vco_fra > 1) {
     if (vco_fra > (2 * pll_ref_khz / n_sdm)) {
@@ -694,7 +698,7 @@ double true_freq(uint64_t freq){
     }
     n_sdm <<= 1;
   }
-  
+
   double f;
   {
     int ntot = (nint << 16) + sdm;
@@ -703,7 +707,7 @@ double true_freq(uint64_t freq){
     f = vco / mix_div;
     return f;
   }
-  
+
 }
 #else // Cleaned up version
 // For a requested frequency, give the actual tuning frequency
@@ -715,7 +719,7 @@ double true_freq(uint64_t freq_hz){
 
   // Clock divider set to 2 for the best resolution
   const uint32_t pll_ref = 28800000u / 2; // 14.4 MHz
-  
+
   // Find divider to put VCO = f*2^(d+1) in range VCO_MIN to VCO_MAX (for ref freq 26 MHz)
   //          MHz             step, Hz
   // 0: 885.0     1770.0      190.735
@@ -732,7 +736,7 @@ double true_freq(uint64_t freq_hz){
   }
   if(div_num > MAX_DIV)
     return 0; // Frequency out of range
-  
+
   // PLL programming bits: Nint in upper 16 bits, Nfract in lower 16 bits
   // Freq steps are pll_ref / 2^(16 + div_num) Hz
   // Note the '+ (pll_ref >> 1)' term simply rounds the division to the nearest integer
@@ -775,4 +779,3 @@ static void closedown(int a){
     exit(0);
   exit(1);
 }
-

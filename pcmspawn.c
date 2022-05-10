@@ -25,16 +25,16 @@
 
 struct session {
   struct session *prev;       // Linked list pointers
-  struct session *next; 
+  struct session *next;
   int type;                 // input RTP type (10,11)
-  
+
   struct sockaddr sender;
   char addr[NI_MAXHOST];    // RTP Sender IP address
   char port[NI_MAXSERV];    // RTP Sender source port
 
   FILE *pipe;
   struct timespec last_active;
- 
+
   struct rtp_state rtp_state; // RTP input state
 
   unsigned long dropped_samples;  // Dropped samples (stereo samples) replaced with silence
@@ -77,7 +77,7 @@ struct option Options[] =
    {NULL, 0, NULL, 0},
 
   };
-   
+
 char Optstring[] = "A:I:N:S:v";
 
 struct sockaddr_storage Status_dest_address;
@@ -119,7 +119,7 @@ int main(int argc,char * const argv[]){
   }
   // This needs to be a proper macro expansion
   Command = argv[optind];
-  
+
   char iface[1024];
   if(Input){
     resolve_mcast(Input,&PCM_dest_address,DEFAULT_RTP_PORT,iface,sizeof(iface));
@@ -157,7 +157,7 @@ int main(int argc,char * const argv[]){
   signal(SIGPIPE,SIG_IGN);
 
   pthread_mutex_init(&Session_protect,NULL);
-  
+
   // Loop forever processing and dispatching incoming PCM packets
   // Process incoming RTP packets, demux to per-SSRC thread
   struct packet *pkt = NULL;
@@ -169,11 +169,11 @@ int main(int argc,char * const argv[]){
     pkt->next = NULL;
     pkt->data = NULL;
     pkt->len = 0;
-    
+
     struct sockaddr_storage sender;
     socklen_t socksize = sizeof(sender);
     int size = recvfrom(Input_fd,&pkt->content,sizeof(pkt->content),0,(struct sockaddr *)&sender,&socksize);
-    
+
     if(size == -1){
       if(errno != EINTR){ // Happens routinely, e.g., when window resized
 	perror("recvfrom");
@@ -183,7 +183,7 @@ int main(int argc,char * const argv[]){
     }
     if(size <= RTP_MIN_SIZE)
       continue; // Must be big enough for RTP header and at least some data
-    
+
     // Extract and convert RTP header to host format
     unsigned char const *dp = ntoh_rtp(&pkt->rtp,pkt->content);
     pkt->data = dp;
@@ -194,7 +194,7 @@ int main(int argc,char * const argv[]){
     }
     if(pkt->len <= 0)
       continue; // Used to be an assert, but would be triggered by bogus packets
-    
+
     // Find appropriate session; create new one if necessary
     struct session *sp = lookup_session((const struct sockaddr *)&sender,pkt->rtp.ssrc,pkt->rtp.type);
     if(!sp){
@@ -215,7 +215,7 @@ int main(int argc,char * const argv[]){
       // Channels
       // sample rate
       // sending IP address & port
-      
+
       char command_line[2048];
       int const samprate = samprate_from_pt(sp->type);
       int const channels = channels_from_pt(sp->type);
@@ -247,7 +247,7 @@ int main(int argc,char * const argv[]){
       if(samples_skipped < 4 * 48000){ // 4 sec @ 48kHz is arbitrary
 	sp->dropped_samples += samples_skipped;
 	int const padding = 2 * channels * samples_skipped;
-	
+
 	for(int i=0; i < padding; i++)
 	  fputc(0,sp->pipe);
       } else {
@@ -309,10 +309,10 @@ void * status(void *p){
 
       while(cp - buffer < length){
 	enum status_type const type = *cp++;
-	
+
 	if(type == EOL)
 	  break;
-	
+
 	unsigned int const optlen = *cp++;
 	if(cp - buffer + optlen > length)
 	  break;
@@ -347,7 +347,7 @@ void * status(void *p){
 	    memcpy(&PCM_dest_address,&dest_temp,sizeof(dest_temp));
 	    pthread_cond_broadcast(&Input_ready_cond);
 	    pthread_mutex_unlock(&Input_ready_mutex);
-	    
+
 	    // Cancel timeouts and polls
 	    struct timeval timeout;
 	    timeout.tv_sec = 0;
@@ -397,8 +397,11 @@ struct session *lookup_session(const struct sockaddr * const sender,const uint32
 struct session *create_session(void){
 
   struct session * const sp = calloc(1,sizeof(*sp));
-  assert(sp != NULL); // Shouldn't happen on modern machines!
-  
+  if (!sp) {
+    fprintf(stdout,"out of memory\n");
+    exit(1);
+  }
+
   // Initialize entry
 
   // Put at head of list
@@ -414,7 +417,7 @@ struct session *create_session(void){
 
 int close_session(struct session * const sp){
   assert(sp != NULL);
-  
+
   // Remove from linked list of sessions
   pthread_mutex_lock(&Session_protect);
   if(sp->next != NULL)

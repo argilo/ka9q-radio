@@ -116,7 +116,7 @@ struct session {
   int terminate;            // Set to cause thread to terminate voluntarily
   int muted;
   int reset;                // Set to force output timing reset on next packet
-  
+
   char id[32];
 };
 #define NSESSIONS 1500
@@ -182,7 +182,7 @@ int main(int argc,char * const argv[]){
     case 'I':
       if(Nfds == MAX_MCAST){
 	fprintf(stderr,"Too many multicast addresses; max %d\n",MAX_MCAST);
-      } else 
+      } else
 	Mcast_address_text[Nfds++] = optarg;
       break;
     case 'q': // No ncurses
@@ -212,7 +212,7 @@ int main(int argc,char * const argv[]){
   for(int i=optind; i < argc; i++){
     if(Nfds == MAX_MCAST){
       fprintf(stderr,"Too many multicast addresses; max %d\n",MAX_MCAST);
-    } else 
+    } else
       Mcast_address_text[Nfds++] = argv[i];
   }
 
@@ -271,7 +271,7 @@ int main(int argc,char * const argv[]){
   outputParameters.device = inDevNum;
   outputParameters.sampleFormat = paFloat32;
   outputParameters.suggestedLatency = Latency; // 0 doesn't seem to be a good value on OSX, lots of underruns and stutters
-  
+
   // Clear output buffer
   // Should already be cleared at startup, but there's often a loud burst of noise after startup
   // So maybe something is polluting it
@@ -289,7 +289,7 @@ int main(int argc,char * const argv[]){
 		    NULL);
 
   if(r != paNoError){
-    fprintf(stderr,"Portaudio error: %s, exiting\n",Pa_GetErrorText(r));      
+    fprintf(stderr,"Portaudio error: %s, exiting\n",Pa_GetErrorText(r));
     exit(1);
   }
 
@@ -353,7 +353,7 @@ static void *sockproc(void *arg){
   if(input_fd == -1)
     pthread_exit(NULL);
   struct packet *pkt = NULL;
-  
+
   // Main loop begins here
   while(1){
 
@@ -364,11 +364,11 @@ static void *sockproc(void *arg){
     pkt->next = NULL;
     pkt->data = NULL;
     pkt->len = 0;
-    
+
     struct sockaddr_storage sender;
     socklen_t socksize = sizeof(sender);
     int size = recvfrom(input_fd,&pkt->content,sizeof(pkt->content),0,(struct sockaddr *)&sender,&socksize);
-    
+
     if(size == -1){
       if(errno != EINTR){ // Happens routinely, e.g., when window resized
 	perror("recvfrom");
@@ -378,7 +378,7 @@ static void *sockproc(void *arg){
     }
     if(size <= RTP_MIN_SIZE)
       continue; // Must be big enough for RTP header and at least some data
-    
+
     // Convert RTP header to host format
     unsigned char const *dp = ntoh_rtp(&pkt->rtp,pkt->content);
     pkt->data = dp;
@@ -389,7 +389,7 @@ static void *sockproc(void *arg){
     }
     if(pkt->len <= 0)
       continue; // Used to be an assert, but would be triggered by bogus packets
-    
+
     // Find appropriate session; create new one if necessary
     pthread_mutex_lock(&Sess_mutex); // Protect Nsessions
     struct session *sp = lookup_session(&sender,pkt->rtp.ssrc);
@@ -427,14 +427,14 @@ static void *sockproc(void *arg){
 	continue;
       }
     }
-    
+
     // Insert onto queue sorted by sequence number, wake up thread
     struct packet *q_prev = NULL;
     struct packet *qe = NULL;
     pthread_mutex_lock(&sp->qmutex);
     for(qe = sp->queue; qe && pkt->rtp.seq >= qe->rtp.seq; q_prev = qe,qe = qe->next)
       ;
-    
+
     pkt->next = qe;
     if(q_prev)
       q_prev->next = pkt;
@@ -444,7 +444,7 @@ static void *sockproc(void *arg){
     // wake up decoder thread
     pthread_cond_signal(&sp->qcond);
     pthread_mutex_unlock(&sp->qmutex);
-  }      
+  }
   return NULL;
 }
 
@@ -533,7 +533,7 @@ static void *decode_task(void *arg){
 
     }
     sp->rtp_state.seq = pkt->rtp.seq + 1;
-    
+
     if(pkt->rtp.marker){
       // beginning of talk spurt, resync
       sp->active = 0; // reset active
@@ -545,7 +545,7 @@ static void *decode_task(void *arg){
       // Execute Opus decoder even when muted to keep its state updated
       if(!sp->opus){
 	int error;
-	
+
 	// Always decode Opus to 48 kHz stereo, ignoring original sample rate
 	sp->opus = opus_decoder_create(Samprate,2,&error);
 	assert(sp->opus);
@@ -593,7 +593,7 @@ static void *decode_task(void *arg){
       if(sp->frame_size <= 0)
 	goto endloop;
 
-      signed short *data_ints = (signed short *)&pkt->data[0];	
+      signed short *data_ints = (signed short *)&pkt->data[0];
       for(int i=0; i < sp->frame_size && i < MAXSIZE; i++){
 	assert((void *)data_ints >= (void *)&pkt->data[0] && (void *)data_ints < (void *)(&pkt->data[0] + pkt->len));
 	float left = SCALE * (signed short)ntohs(*data_ints++);
@@ -730,7 +730,7 @@ static void *display(void *arg){
       printw("d delete session\n");
       printw("r reset playout buffer\n");
       printw("m mute current session\n");
-      printw("M mute all sessions\n");      
+      printw("M mute all sessions\n");
       printw("u unmute current session\n");
       printw("U unmute all sessions\n");
       printw("A toggle start all sessions muted\n");
@@ -752,20 +752,20 @@ static void *display(void *arg){
       // First header line
       printw("                                                     ------- Activity --------");
       if(Verbose)
-	printw(" Play  ----Codec----     ---------------RTP--------------------------");	
-      printw("\n");    
-      
+	printw(" Play  ----Codec----     ---------------RTP--------------------------");
+      printw("\n");
+
       // Second header line
       printw("  dB Pan     SSRC ID                                 Total   Current      Idle");
       if(Verbose)
 	printw(" Queue Type ms ch BW     packets resets drops lates early Source/Dest");
       printw("\n");
-      
+
       if(Auto_sort)
 	sort_session_active();
 
       sessions_per_screen = LINES - getcury(stdscr) - 1;
-      
+
       /* This mutex protects Sessions[] and Nsessions. Instead of holding the
 	 lock for the entire display loop, we make a copy.
       */
@@ -781,37 +781,37 @@ static void *display(void *arg){
       if(current == -1 && Nsessions > 0)
 	current = 0; // Session got created, make it current
       pthread_mutex_unlock(&Sess_mutex);
-      
+
       for(int session = first_session; session < Nsessions_copy; session++){
 	struct session *sp = Sessions_copy[session];
-	
+
 	// embolden entire line if active
 	int queue = 1000 * (sp->wptr - Rptr) / Samprate;
 	int idle = sp->wptr < Rptr ? (Rptr - sp->wptr) / Samprate : 0;
-	
+
 	if(queue > 0)
 	  attr_on(A_BOLD,NULL);
-	
+
 	// Stand out gain and pan on currently selected channel
 	if(session == current)
 	  attr_on(A_STANDOUT,NULL);
-	
+
 	printw("%+4.0lf%4d",sp->muted ? -INFINITY : voltage2dB(sp->gain),(int)roundf(100*sp->pan));
 	attr_off(A_STANDOUT,NULL);
 	{
 	  char id[100];
 	  char identifier[31];
-	  
+
 	  // Truncate ID field to 30 places
 	  strlcpy(identifier,sp->id,sizeof(identifier));
-	  
+
 	  printw("%9u %-30s%10.0f%10.0f%10s",
 		 sp->ssrc,
 		 identifier,
 		 sp->tot_active, // Total active time, sec
 		 sp->active,    // active time in current transmission, sec
 		 ftime(id,sizeof(id),idle));                    // Time idle since last transmission
-	  
+
 	}
 	if(Verbose){
 	  printw("%6d%5s%3d%3d%3d",
@@ -819,14 +819,14 @@ static void *display(void *arg){
 		 sp->type == OPUS_PT ? "Opus" : "PCM",
 		 (1000 * sp->frame_size/sp->samprate), // frame size, ms
 		 sp->channels,
-		 sp->bandwidth); // Bandwidth, kHz 
-	  
+		 sp->bandwidth); // Bandwidth, kHz
+
 	  printw("%'12lu",sp->packets);
 	  printw("%'7llu",sp->resets);
 	  printw("%'6llu",sp->rtp_state.drops);
 	  printw("%'6llu",sp->lates);
 	  printw("%'6llu",sp->earlies);
-	  
+
 	  // printable version of socket addresses and ports
 	  if(sp->dest){ // Might not be allocated yet, if we got dispatched during the nameinfo() call
 	    printw(" %s -> %s",formatsock(&sp->sender),sp->dest);
@@ -837,7 +837,7 @@ static void *display(void *arg){
 	if(getcury(stdscr) >= LINES-1) // Can't be at beginning, because y will clip at LINES!
 	  break;
       } // end session loop
-      
+
       if(Verbose){
 	// Measure skew between sampling clock and UNIX real time (hopefully NTP synched)
 	struct timespec ts;
@@ -849,12 +849,12 @@ static void *display(void *arg){
 	if(Start_unix_time.tv_sec != Last_error_time.tv_sec)
 	  printw("Error-free seconds: %'.1lf\n",ts.tv_sec - Last_error_time.tv_sec + 1e-9 * (ts.tv_nsec - Last_error_time.tv_nsec));
 	printw("Initial playout time: %.0f ms\n",Playout);
-      }      
+      }
     }
 
     // process keyboard commands only if there's something to act on
     int c = getch(); // Pauses here
-    
+
     // Not all of these commands require locking, but it's easier to just always do it
     pthread_mutex_lock(&Sess_mutex); // Re-lock after time consuming wgetch (which includes a refresh)
     // Since we unlocked & relocked, Nsessions might have changed (incremented) again
@@ -1031,7 +1031,7 @@ static void reset_session(struct session * const sp,uint32_t timestamp){
 static int scompare(void const *a, void const *b){
   struct session const * const s1 = *(struct session **)a;
   struct session const * const s2 = *(struct session **)b;
-  
+
   if(s1->wptr > Rptr && s2->wptr > Rptr){
     // Both active
 
@@ -1043,13 +1043,13 @@ static int scompare(void const *a, void const *b){
 #endif
     if(s1->active > s2->active)
       return -1;
-    else 
+    else
       return +1; // Longer active above shorter active
   } else if(s1->wptr > Rptr && s2->wptr < Rptr){
     return -1; // all active sessions above all idle sessions
   } else if(s1->wptr < Rptr && s2->wptr > Rptr){
     return +1;
-  
+
   // more recently idle sorts ahead of longer idle
   } else if(s1->wptr > s2->wptr){
     return -1;
@@ -1063,7 +1063,7 @@ static int scompare(void const *a, void const *b){
 static int tcompare(void const *a, void const *b){
   struct session const * const s1 = *(struct session **)a;
   struct session const * const s2 = *(struct session **)b;
-  
+
 #if NOFUZZ
   if(fabsf(s1->tot_active - s2->tot_active) < 0.1) // equal within margin
     return 0;
@@ -1085,6 +1085,11 @@ static int sort_session_total(void){
 
 
 static struct session *lookup_session(const struct sockaddr_storage *sender,const uint32_t ssrc){
+        if (sender->ss_family == AF_INET) {
+                struct sockaddr_in *addr = (struct sockaddr_in *)sender;
+                fprintf(stderr, "port %d, addr %08x\n", addr->sin_port, addr->sin_addr.s_addr);
+
+        }
   for(int i = 0; i < Nsessions; i++){
     struct session *sp = Sessions[i];
     if(sp->ssrc == ssrc && memcmp(&sp->sender,sender,sizeof(*sender)) == 0){
@@ -1097,9 +1102,10 @@ static struct session *lookup_session(const struct sockaddr_storage *sender,cons
 // Create a new session, partly initialize
 static struct session *create_session(struct sockaddr_storage const *sender,uint32_t ssrc){
   struct session * const sp = calloc(1,sizeof(*sp));
-
-  if(sp == NULL)
-    return NULL; // Shouldn't happen on modern machines!
+  if (!sp) {
+    fprintf(stdout,"out of memory\n");
+    exit(1);
+  }
 
   // Initialize entry
   memcpy(&sp->sender,sender,sizeof(*sender));
@@ -1117,7 +1123,7 @@ static int close_session(struct session **p){
   if(sp == NULL)
     return -1;
   assert(Nsessions > 0);
-  
+
   // Remove from table
   for(int i = 0; i < Nsessions; i++){
     if(Sessions[i] == sp){
@@ -1154,7 +1160,7 @@ static int pa_callback(void const *inputBuffer, void *outputBuffer,
 		       void *userData){
   if(!outputBuffer)
     return paAbort; // can this happen??
-  
+
 #if 0
   if(Last_callback_time + 1.0 < timeInfo->currentTime){
     // We've been asleep for >1 sec. Reset everybody
@@ -1212,7 +1218,7 @@ static void load_id(void){
     FILE * const fp = fopen(filename,"r");
     if(fp == NULL)
       return;
-    
+
     char line[1024];
     while(fgets(line,sizeof(line),fp)){
       chomp(line);
@@ -1223,7 +1229,7 @@ static void load_id(void){
       Idtable[Nid].ssrc = strtol(line,&ptr,0);
       if(ptr == line)
 	continue; // no parseable hex number
-      
+
       while(*ptr == ' ' || *ptr == '\t')
 	ptr++;
       int len = strlen(ptr); // Length of ID field

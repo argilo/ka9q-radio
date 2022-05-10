@@ -82,7 +82,7 @@ int connect_mcast(void const *s,char const *iface,int const ttl,int const tos){
   if((fd = socket(sock->sa_family,SOCK_DGRAM,0)) == -1){
     perror("setup_mcast socket");
     return -1;
-  }      
+  }
   soptions(fd,ttl,tos);
   // Strictly speaking, it is not necessary to join a multicast group to which we only send.
   // But this creates a problem with "smart" switches that do IGMP snooping.
@@ -159,7 +159,7 @@ int listen_mcast(void const *s,char const *iface){
   if(fd == -1){
     perror("setup_mcast socket");
     return -1;
-  }      
+  }
   soptions(fd,-1,-1);
   // Strictly speaking, it is not necessary to join a multicast group to which we only send.
   // But this creates a problem with "smart" switches that do IGMP snooping.
@@ -222,14 +222,14 @@ int resolve_mcast(char const *target,void *sock,int default_port,char *iface,int
     hints.ai_socktype = SOCK_DGRAM;
     hints.ai_protocol = IPPROTO_UDP;
     hints.ai_flags = AI_ADDRCONFIG;
-    
+
     // If no domain zone is specified, assume .local (i.e., for multicast DNS)
     char full_host[PATH_MAX+6];
     if(strchr(host,'.') == NULL)
       snprintf(full_host,sizeof(full_host),"%s.local",host);
     else
       strlcpy(full_host,host,sizeof(full_host));
-    
+
     int const ecode = getaddrinfo(full_host,port,&hints,&results);
     if(ecode == 0)
       break;
@@ -376,7 +376,7 @@ char const *formatsock(void const *s){
       ic->prev->next = ic->next;
       if(ic->next)
 	ic->next->prev = ic->prev;
-      
+
       ic->next = Inverse_cache_table;
       ic->next->prev = ic;
       ic->prev = NULL;
@@ -386,10 +386,13 @@ char const *formatsock(void const *s){
   }
   // Not in list yet, add at top
   struct inverse_cache * const ic = (struct inverse_cache *)calloc(1,sizeof(*ic));
-  assert(ic); // Malloc failures are rare
+  if (!ic) {
+    fprintf(stdout,"out of memory\n");
+    exit(1);
+  }
   char host[NI_MAXHOST],port[NI_MAXSERV];
   memset(host,0,sizeof(host));
-  memset(port,0,sizeof(port));  
+  memset(port,0,sizeof(port));
   getnameinfo(sa,slen,
 	      host,NI_MAXHOST,
 	      port,NI_MAXSERV,
@@ -507,7 +510,7 @@ int pt_from_info(int const samprate,int const channels){
 
   return pt_table[s][channels-1];
 }
- 
+
 // Return port number (in HOST order) in a sockaddr structure
 // Return -1 on error
 int getportnumber(void const *arg){
@@ -631,19 +634,19 @@ static int join_group(int const fd,void const * const sock,char const * const if
 #if __APPLE__
   if(!iface || strlen(iface) == 0)
     return apple_join_group(fd,sock); // Apple workaround for default interface
-#endif  
+#endif
 
   struct group_req group_req;
   memcpy(&group_req.gr_group,sock,socklen);
-  
+
   if(iface)
     group_req.gr_interface = if_nametoindex(iface);
   else
-    group_req.gr_interface = 0; // Default interface    
+    group_req.gr_interface = 0; // Default interface
 
   if(setsockopt(fd,IPPROTO_IP,MCAST_JOIN_GROUP,&group_req,sizeof(group_req)) != 0){
     fprintf(stderr,"group_req.gr_interface = %s(%d), group = %s\n",
-	    iface,group_req.gr_interface,formatsock(sock)); 
+	    iface,group_req.gr_interface,formatsock(sock));
     perror("multicast join");
     return -1;
   }
@@ -680,7 +683,7 @@ static int apple_join_group(int const fd,void const * const sock){
       struct ipv6_mreq ipv6_mreq;
       ipv6_mreq.ipv6mr_multiaddr = sin6->sin6_addr;
       ipv6_mreq.ipv6mr_interface = 0; // Default interface
-      
+
       if(setsockopt(fd,IPPROTO_IP,IPV6_JOIN_GROUP,&ipv6_mreq,sizeof(ipv6_mreq)) != 0){
 	perror("apple multicast v6 join");
 	return -1;

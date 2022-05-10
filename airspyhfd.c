@@ -94,7 +94,7 @@ struct sdrstate {
 
   uint64_t commands; // Command counter
   uint32_t command_tag; // Last received command tag
-  
+
   char const *data_dest;
   struct sockaddr_storage output_data_source_address; // Multicast output socket
   struct sockaddr_storage output_data_dest_address; // Multicast output socket
@@ -141,9 +141,13 @@ int main(int argc,char *argv[]){
     else
       break;
   }
-#endif  
+#endif
 
   struct sdrstate * const sdr = (struct sdrstate *)calloc(1,sizeof(struct sdrstate));
+  if (!sdr) {
+    fprintf(stdout,"out of memory\n");
+    exit(1);
+  }
   // Defaults
   sdr->agc = 1;
   // 2400 packets/sec @ 768 ks/s, 48 packets per 20 ms, 24 pkts/10 ms
@@ -278,7 +282,7 @@ int main(int argc,char *argv[]){
     uint32_t num_samprates;
     int ret = airspyhf_get_samplerates(sdr->device,&num_samprates,0);
     assert(ret == AIRSPYHF_SUCCESS);
-    
+
     uint32_t samprates[num_samprates];
     ret = airspyhf_get_samplerates(sdr->device,samprates,num_samprates);
     assert(ret == AIRSPYHF_SUCCESS);
@@ -357,7 +361,7 @@ int main(int argc,char *argv[]){
     if(x != -1){
       sdr->blocksize = x;
     } else if(RTP_ttl == 0)
-      sdr->blocksize = 2048; 
+      sdr->blocksize = 2048;
     else
       sdr->blocksize = 960;
   }
@@ -393,14 +397,14 @@ int main(int argc,char *argv[]){
     }
     socklen_t len = sizeof(sdr->output_data_source_address);
     getsockname(sdr->data_sock,(struct sockaddr *)&sdr->output_data_source_address,&len);
-    
+
     resolve_mcast(sdr->metadata_dest,&sdr->output_metadata_dest_address,DEFAULT_STAT_PORT,iface,sizeof(iface));
     sdr->status_sock = connect_mcast(&sdr->output_metadata_dest_address,iface,Status_ttl,IP_tos);
     if(sdr->status_sock <= 0){
       fprintf(stderr,"Can't create multicast status socket to %s: %s\n",sdr->metadata_dest,strerror(errno));
       exit(1);
     }
-    
+
     // Set up new control socket on port 5006
     sdr->nctl_sock = listen_mcast(&sdr->output_metadata_dest_address,iface);
     if(sdr->nctl_sock <= 0){
@@ -408,7 +412,7 @@ int main(int argc,char *argv[]){
       exit(1);
     }
   }
-  
+
   init_frequency = config_getdouble(Dictionary,Name,"frequency",0);
   if(init_frequency != 0)
     sdr->frequency_lock = 1;
@@ -441,8 +445,8 @@ int main(int argc,char *argv[]){
   signal(SIGINT,closedown);
   signal(SIGKILL,closedown);
   signal(SIGQUIT,closedown);
-  signal(SIGTERM,closedown);        
-  
+  signal(SIGTERM,closedown);
+
   if(sdr->status)
     pthread_create(&sdr->display_thread,NULL,display,sdr);
 
@@ -451,7 +455,7 @@ int main(int argc,char *argv[]){
   assert(ret == AIRSPYHF_SUCCESS);
 
   send_airspyhf_status(sdr,1); // Tell the world we're alive
-  
+
   // Periodically poll status to ensure device hasn't reset
   while(1){
     sleep(1);
@@ -470,7 +474,7 @@ void *ncmd(void *arg){
   pthread_setname("aspyhf-cmd");
   assert(arg != NULL);
   struct sdrstate * const sdr = arg;
-  if(sdr->status_sock == -1 || sdr->nctl_sock == -1) 
+  if(sdr->status_sock == -1 || sdr->nctl_sock == -1)
     return NULL; // Nothing to do
 
   while(1){
@@ -505,7 +509,7 @@ void *display(void *arg){
 
     if(stat_point != -1)
       fseeko(sdr->status,stat_point,SEEK_SET);
-    
+
     fprintf(sdr->status,"%'-14.0lf%'7.1f%'10d    %c",
 	    sdr->frequency,
 	    powerdB,
@@ -523,14 +527,14 @@ void decode_airspyhf_commands(struct sdrstate *sdr,unsigned char *buffer,int len
   while(cp - buffer < length){
     int ret __attribute__((unused)); // Won't be used when asserts are disabled
     enum status_type const type = *cp++; // increment cp to length field
-    
+
     if(type == EOL)
       break; // End of list
-    
+
     unsigned int const optlen = *cp++;
     if(cp - buffer + optlen >= length)
       break; // Invalid length
-    
+
     switch(type){
     case EOL: // Shouldn't get here
       break;
@@ -550,20 +554,20 @@ void decode_airspyhf_commands(struct sdrstate *sdr,unsigned char *buffer,int len
       break;
     }
     cp += optlen;
-  }    
-}  
+  }
+}
 
 void send_airspyhf_status(struct sdrstate *sdr,int full){
   unsigned char packet[2048];
   unsigned char *bp = packet;
-  
+
   sdr->output_metadata_packets++;
 
   *bp++ = 0;   // Command/response = response
-  
+
   encode_int32(&bp,COMMAND_TAG,sdr->command_tag);
   encode_int64(&bp,CMD_CNT,sdr->commands);
-  
+
   struct timespec now;
   clock_gettime(CLOCK_REALTIME,&now);
   long long timestamp = ((now.tv_sec - UNIX_EPOCH + GPS_UTC_OFFSET) * 1000000000LL + now.tv_nsec);
@@ -585,7 +589,7 @@ void send_airspyhf_status(struct sdrstate *sdr,int full){
   // Front end
   encode_double(&bp,CALIBRATE,sdr->calibration);
   encode_byte(&bp,GAIN,0);
-  
+
   // Tuning
   encode_double(&bp,RADIO_FREQUENCY,sdr->frequency);
   encode_int32(&bp,LOCK,sdr->frequency_lock);
@@ -642,7 +646,7 @@ int rx_callback(airspyhf_transfer_t *transfer){
     rtp.seq = sdr->rtp.seq++;
     rtp.timestamp = sdr->rtp.timestamp;
     uint8_t * const dp = hton_rtp(buffer,&rtp);
-    
+
     iov[0].iov_len = dp - buffer; // length of RTP header
     iov[1].iov_base = idp;
     iov[1].iov_len = chunk * sizeof(complex float);
@@ -655,7 +659,7 @@ int rx_callback(airspyhf_transfer_t *transfer){
     } else {
       sdr->rtp.packets++;
       sdr->rtp.bytes += iov[0].iov_len + iov[1].iov_len;
-    }  
+    }
     sdr->rtp.timestamp += chunk; // real-only samples
     samples -= chunk;
   }
@@ -699,4 +703,3 @@ static void closedown(int a){
     exit(0);
   exit(1);
 }
-

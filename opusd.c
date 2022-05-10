@@ -32,9 +32,9 @@
 
 struct session {
   struct session *prev;       // Linked list pointers
-  struct session *next; 
+  struct session *next;
   int type;                 // input RTP type (10,11)
-  
+
   struct sockaddr sender;
   char addr[NI_MAXHOST];    // RTP Sender IP address
   char port[NI_MAXSERV];    // RTP Sender source port
@@ -43,7 +43,7 @@ struct session {
   pthread_mutex_t qmutex;
   pthread_cond_t qcond;
   struct packet *queue;
- 
+
   struct rtp_state rtp_state_in; // RTP input state
   int samprate; // PCM sample rate Hz
   int channels;
@@ -59,7 +59,7 @@ struct session {
   float deemph_rate;
   float deemph_gain;
   float deemph_state_left;
-  float deemph_state_right;  
+  float deemph_state_right;
   long long packets;
 };
 
@@ -129,11 +129,11 @@ struct option Options[] =
    {"voice", no_argument, NULL, 'V'},
    {"tos", required_argument, NULL, 'p'},
    {"iptos", required_argument, NULL, 'p'},
-   {"ip-tos", required_argument, NULL, 'p'},    
+   {"ip-tos", required_argument, NULL, 'p'},
    {NULL, 0, NULL, 0},
 
   };
-   
+
 char Optstring[] = "A:B:I:N:R:S:T:fo:vxp:";
 
 struct sockaddr_storage Status_dest_address;
@@ -214,7 +214,7 @@ int main(int argc,char * const argv[]){
     fprintf(stderr,"Must specify --opus-out\n");
     exit(1);
   }
-  
+
   char iface[1024];
   if(Input){
     resolve_mcast(Input,&PCM_dest_address,DEFAULT_RTP_PORT,iface,sizeof(iface));
@@ -271,7 +271,7 @@ int main(int argc,char * const argv[]){
   signal(SIGPIPE,SIG_IGN);
 
   pthread_mutex_init(&Session_protect,NULL);
-  
+
   // Loop forever processing and dispatching incoming PCM packets
   // Process incoming RTP packets, demux to per-SSRC thread
   struct packet *pkt = NULL;
@@ -283,11 +283,11 @@ int main(int argc,char * const argv[]){
     pkt->next = NULL;
     pkt->data = NULL;
     pkt->len = 0;
-    
+
     struct sockaddr_storage sender;
     socklen_t socksize = sizeof(sender);
     int size = recvfrom(Input_fd,&pkt->content,sizeof(pkt->content),0,(struct sockaddr *)&sender,&socksize);
-    
+
     if(size == -1){
       if(errno != EINTR){ // Happens routinely, e.g., when window resized
 	perror("recvfrom");
@@ -297,7 +297,7 @@ int main(int argc,char * const argv[]){
     }
     if(size <= RTP_MIN_SIZE)
       continue; // Must be big enough for RTP header and at least some data
-    
+
     // Extract and convert RTP header to host format
     unsigned char const *dp = ntoh_rtp(&pkt->rtp,pkt->content);
     pkt->data = dp;
@@ -308,7 +308,7 @@ int main(int argc,char * const argv[]){
     }
     if(pkt->len <= 0)
       continue; // Used to be an assert, but would be triggered by bogus packets
-    
+
     // Find appropriate session; create new one if necessary
     struct session *sp = lookup_session((const struct sockaddr *)&sender,pkt->rtp.ssrc);
     if(!sp){
@@ -339,7 +339,7 @@ int main(int argc,char * const argv[]){
 	continue;
       }
     }
-    
+
     // Insert onto queue sorted by sequence number, wake up thread
     struct packet *q_prev = NULL;
     struct packet *qe = NULL;
@@ -347,7 +347,7 @@ int main(int argc,char * const argv[]){
       pthread_mutex_lock(&sp->qmutex);
       for(qe = sp->queue; qe && pkt->rtp.seq >= qe->rtp.seq; q_prev = qe,qe = qe->next)
 	;
-      
+
       pkt->next = qe;
       if(q_prev)
 	q_prev->next = pkt;
@@ -358,7 +358,7 @@ int main(int argc,char * const argv[]){
       pthread_cond_signal(&sp->qcond);
       pthread_mutex_unlock(&sp->qmutex);
     }
-  }      
+  }
 }
 
 
@@ -424,10 +424,10 @@ void * status(void *p){
 
       while(cp - buffer < length){
 	enum status_type const type = *cp++;
-	
+
 	if(type == EOL)
 	  break;
-	
+
 	unsigned int const optlen = *cp++;
 	if(cp - buffer + optlen > length)
 	  break;
@@ -462,7 +462,7 @@ void * status(void *p){
 	    memcpy(&PCM_dest_address,&dest_temp,sizeof(dest_temp));
 	    pthread_cond_broadcast(&Input_ready_cond);
 	    pthread_mutex_unlock(&Input_ready_mutex);
-	    
+
 	    // Cancel timeouts and polls
 	    struct timeval timeout;
 	    timeout.tv_sec = 0;
@@ -500,20 +500,20 @@ void *encode(void *arg){
   int error = 0;
   sp->opus = opus_encoder_create(sp->samprate,sp->channels,Application,&error);
   assert(error == OPUS_OK && sp);
-  
+
   error = opus_encoder_ctl(sp->opus,OPUS_SET_DTX(Discontinuous));
   assert(error == OPUS_OK);
-  
+
   error = opus_encoder_ctl(sp->opus,OPUS_SET_BITRATE(Opus_bitrate));
   assert(error == OPUS_OK);
-  
+
   if(Fec_enable){
     error = opus_encoder_ctl(sp->opus,OPUS_SET_INBAND_FEC(1));
     assert(error == OPUS_OK);
     error = opus_encoder_ctl(sp->opus,OPUS_SET_PACKET_LOSS_PERC(Fec_enable));
     assert(error == OPUS_OK);
   }
-  
+
 #if 0 // Is this even necessary?
       // Always seems to return error -5 even when OK??
   error = opus_encoder_ctl(sp->opus,OPUS_FRAMESIZE_ARG,Opus_blocktime);
@@ -537,7 +537,7 @@ void *encode(void *arg){
 	  if(ret == ETIMEDOUT){
 	    // Idle timeout after 10 sec; close session and terminate thread
 	    pthread_mutex_unlock(&sp->qmutex);
-	    close_session(&sp); 
+	    close_session(&sp);
 	    return NULL; // exit thread
 	  }
 	}
@@ -556,7 +556,7 @@ void *encode(void *arg){
     int const samples_skipped = rtp_process(&sp->rtp_state_in,&pkt->rtp,frame_size);
     if(samples_skipped < 0)
       goto endloop; // Old dupe
-    
+
     if(sp->type != pkt->rtp.type){ // Handle transitions both ways
       sp->type = pkt->rtp.type;
     }
@@ -573,7 +573,7 @@ void *encode(void *arg){
       sp->silence = 1;
     }
     signed short const *samples = (signed short *)pkt->data;
-    
+
     for(int i=0; i < frame_size;i++){
       float left = SCALE * (signed short)ntohs(*samples++);
       sp->audio_buffer[sp->audio_write_index++] = left;
@@ -618,8 +618,11 @@ struct session *lookup_session(const struct sockaddr * const sender,const uint32
 struct session *create_session(void){
 
   struct session * const sp = calloc(1,sizeof(*sp));
-  assert(sp != NULL); // Shouldn't happen on modern machines!
-  
+  if (!sp) {
+    fprintf(stdout,"out of memory\n");
+    exit(1);
+  }
+
   // Initialize entry
   pthread_mutex_init(&sp->qmutex,NULL);
   pthread_cond_init(&sp->qcond,NULL);
@@ -641,7 +644,7 @@ int close_session(struct session ** p){
   struct session *sp = *p;
   if(sp == NULL)
     return -1;
-  
+
   if(sp->opus != NULL){
     opus_encoder_destroy(sp->opus);
     sp->opus = NULL;
@@ -703,15 +706,15 @@ int send_samples(struct session * const sp){
     else if(ms_in_buffer >= 80)
       frame_size = 80 * sp->samprate / 1000;
     else if(ms_in_buffer >= 60)
-      frame_size = 60 * sp->samprate / 1000;      
+      frame_size = 60 * sp->samprate / 1000;
     else if(ms_in_buffer >= 40)
-      frame_size = 40 * sp->samprate / 1000;      
+      frame_size = 40 * sp->samprate / 1000;
     else if(ms_in_buffer >= 20)
-      frame_size = 20 * sp->samprate / 1000;      
+      frame_size = 20 * sp->samprate / 1000;
     else if(ms_in_buffer >= 10)
       frame_size = 10 * sp->samprate / 1000;
     else if(ms_in_buffer >= 5)
-      frame_size = 5 * sp->samprate / 1000;      
+      frame_size = 5 * sp->samprate / 1000;
     else if(ms_in_buffer >= 2.5)
       frame_size = 2.5 * sp->samprate / 1000;
     else
@@ -725,14 +728,14 @@ int send_samples(struct session * const sp){
     rtp.seq = sp->rtp_state_out.seq;
     rtp.timestamp = sp->rtp_state_out.timestamp;
     rtp.ssrc = sp->rtp_state_out.ssrc;
-    
+
     if(sp->silence){
       // Beginning of talk spurt after silence, set marker bit
       rtp.marker = 1;
       sp->silence = 0;
     } else
       rtp.marker = 0;
-    
+
     unsigned char output_buffer[Bufsize]; // to hold RTP header + Opus-encoded frame
     unsigned char * const opus_write_pointer = hton_rtp(output_buffer,&rtp);
     int packet_bytes_written = opus_write_pointer - output_buffer;
@@ -743,7 +746,7 @@ int send_samples(struct session * const sp){
 						    opus_write_pointer,
 						    Bufsize - packet_bytes_written); // Max # bytes in compressed output buffer
     packet_bytes_written += opus_output_bytes;
-    
+
     if(!Discontinuous || opus_output_bytes > 2){
       // ship it
       if(send(Output_fd,output_buffer,packet_bytes_written,0) < 0)
@@ -754,7 +757,7 @@ int send_samples(struct session * const sp){
       sp->rtp_state_out.packets++;
     } else
       sp->silence = 1;
-    
+
     sp->rtp_state_out.timestamp += frame_size * 48000 / sp->samprate; // Always increase timestamp by virtual 48k sample rate
     const int remaining_bytes = sizeof(sp->audio_buffer[0]) * (sp->audio_write_index - sp->channels * frame_size);
     assert(remaining_bytes >= 0);

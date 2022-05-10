@@ -48,7 +48,7 @@ struct userdata {
 #ifdef TRACE
 static void dump_userdata(struct userdata const *u){
   fprintf(stderr,"service name %s\n",u->service_name);
-  fprintf(stderr,"service type %s\n",u->service_type);  
+  fprintf(stderr,"service type %s\n",u->service_type);
   fprintf(stderr,"service port %d\n",u->service_port);
   fprintf(stderr,"dns_name %s\n",u->dns_name);
   fprintf(stderr,"description %s\n",u->description);
@@ -73,6 +73,10 @@ extern int Verbose;
 // description is optional; if present, forms a TXT record
 void *avahi_start(char const *service_name,char const *service_type,int service_port,char const *dns_name,int base_address,char const *description){
   struct userdata *userdata = (struct userdata *)calloc(1,sizeof(struct userdata));
+  if (!userdata) {
+    fprintf(stdout,"out of memory\n");
+    exit(1);
+  }
   if(service_name)
     userdata->service_name = strdup(service_name);
   if(service_type)
@@ -105,7 +109,7 @@ static void *avahi_register(void *p){
   while(1){
     AvahiClient *client;
     int error;
-    
+
     // Allocate main loop object
     if ((userdata->simple_poll = avahi_simple_poll_new()) == NULL){
       // This should be a very unlikely error; give up
@@ -264,7 +268,7 @@ static int create_services(AvahiClient *c,struct userdata *userdata) {
       char hosteq[sizeof(ourname)+100];
       snprintf(hosteq,sizeof(hosteq),"source=%s",ourname);
       hosteq[sizeof(hosteq)-1] = '\0';
-      
+
       char pideq[1024];
       snprintf(pideq,sizeof(pideq),"pid=%d",getpid());
       pideq[sizeof(pideq)-1] = '\0';

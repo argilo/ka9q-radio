@@ -1,4 +1,4 @@
-// $Id: pcmrecord.c,v 1.17 2022/04/15 05:06:16 karn Exp $ 
+// $Id: pcmrecord.c,v 1.17 2022/04/15 05:06:16 karn Exp $
 // Read and record PCM audio streams
 // Adapted from iqrecord.c which is out of date
 // Copyright 2021 Phil Karn, KA9Q
@@ -71,7 +71,7 @@ struct session {
 
   uint32_t ssrc;               // RTP stream source ID
   struct rtp_state rtp_state;
-  
+
   int type;                    // RTP payload type (with marker stripped)
   int channels;                // 1 (PCM_MONO) or 2 (PCM_STEREO)
   unsigned int samprate;       // implicitly 48 kHz in PCM
@@ -142,7 +142,7 @@ int main(int argc,char *argv[]){
     case 't':
       {
 	char *ptr;
-	long long x = strtoll(optarg,&ptr,0); 
+	long long x = strtoll(optarg,&ptr,0);
 	if(ptr != optarg)
 	  Timeout = x;
       }
@@ -185,7 +185,7 @@ int main(int argc,char *argv[]){
   signal(SIGINT,closedown);
   signal(SIGKILL,closedown);
   signal(SIGQUIT,closedown);
-  signal(SIGTERM,closedown);        
+  signal(SIGTERM,closedown);
   signal(SIGPIPE,SIG_IGN);
 
   atexit(cleanup);
@@ -216,7 +216,7 @@ void input_loop(){
     struct timespec polltime;
     polltime.tv_sec = 1;
     polltime.tv_nsec = 0; // force return after 1 second max
-    
+
     int n = pselect(Input_fd + 1,&fdset,NULL,NULL,&polltime,NULL);
     if(n < 0)
       break; // error of some kind
@@ -231,7 +231,7 @@ void input_loop(){
       }
       if(size < RTP_MIN_SIZE)
 	continue; // Too small for RTP, ignore
-      
+
       unsigned char const *dp = buffer;
       struct rtp_header rtp;
       dp = ntoh_rtp(&rtp,dp);
@@ -242,10 +242,10 @@ void input_loop(){
       }
       if(size <= 0)
 	continue; // Bogus RTP header
-      
+
       signed short *samples = (signed short *)dp;
       size -= (dp - buffer);
-      
+
       struct session *sp;
       for(sp = Sessions;sp != NULL;sp=sp->next){
 	if(sp->ssrc == rtp.ssrc
@@ -264,7 +264,7 @@ void input_loop(){
       int samp_count = size / sizeof(*samples); // number of individual audio samples (not frames)
       int frame_count = samp_count / sp->channels; // 1 every sample period (e.g., 4 for stereo 16-bit)
       off_t offset = rtp_process(&sp->rtp_state,&rtp,frame_count); // rtp timestamps refer to frames
-      
+
       // Flip endianness from network to host; wav wants little endian
       // So actually should convert from network order to little endian, not host
       for(int n = 0; n < samp_count; n++)
@@ -309,7 +309,7 @@ void input_loop(){
 	    printf("closing %s %'.1f/%'.1f sec\n",sp->filename,
 		   (float)sp->SamplesWritten / sp->samprate,
 		   (float)sp->TotalFileSamples / sp->samprate);
-	
+
 	if(sp->SubstantialFile){ // Don't bother for non-substantial files
 	  // Get final file size, write .wav header with sizes
 	  fflush(sp->fp);
@@ -337,7 +337,7 @@ void input_loop(){
     }
   }
 }
- 
+
 void cleanup(void){
   while(Sessions){
     // Flush and close each write stream
@@ -355,23 +355,25 @@ void cleanup(void){
 struct session *create_session(struct rtp_header *rtp){
 
   struct session *sp = calloc(1,sizeof(*sp));
-  if(sp == NULL)
-    return NULL; // unlikely
-  
+  if (!sp) {
+    fprintf(stdout,"out of memory\n");
+    exit(1);
+  }
+
   memcpy(&sp->iq_sender,&Sender,sizeof(sp->iq_sender));
   sp->type = rtp->type;
   sp->ssrc = rtp->ssrc;
-  
+
   sp->channels = channels_from_pt(sp->type);
   sp->samprate = samprate_from_pt(sp->type);
-  
+
   // Create file
   // Should we append to existing files instead? If we try this, watch out for timestamp wraparound
   struct timespec current_time;
   clock_gettime(CLOCK_REALTIME,&current_time);
   struct tm *tm = gmtime(&current_time.tv_sec);
   // yyyy-mm-dd-hh:mm:ss so it will sort properly
-  
+
   sp->fp = NULL;
   if(Subdirs){
     char dir[PATH_MAX];
@@ -406,7 +408,7 @@ struct session *create_session(struct rtp_header *rtp){
 	     tm->tm_sec,
 	     (int)(current_time.tv_nsec / 100000000));
     sp->fp = fopen(sp->filename,"w+");
-  }    
+  }
   if(sp->fp == NULL){
     fprintf(stderr,"can't create/write file %s: %s\n",sp->filename,strerror(errno));
     free(sp);
@@ -416,26 +418,26 @@ struct session *create_session(struct rtp_header *rtp){
   // file create succeded, now put us at top of list
   sp->prev = NULL;
   sp->next = Sessions;
-  
+
   if(sp->next)
     sp->next->prev = sp;
-  
+
   Sessions = sp;
 
   if(Verbose)
     fprintf(stderr,"creating %s\n",sp->filename);
-  
+
   sp->iobuffer = malloc(BUFFERSIZE);
   setbuffer(sp->fp,sp->iobuffer,BUFFERSIZE);
-  
+
   int const fd = fileno(sp->fp);
   fcntl(fd,F_SETFL,O_NONBLOCK); // Let's see if this keeps us from losing data
-  
+
   attrprintf(fd,"samplerate","%lu",(unsigned long)sp->samprate);
   attrprintf(fd,"channels","%d",sp->channels);
   attrprintf(fd,"ssrc","%u",rtp->ssrc);
   attrprintf(fd,"sampleformat","s16le");
-  
+
   // Write .wav header, skipping size fields
   memcpy(sp->header.ChunkID,"RIFF", 4);
   sp->header.ChunkSize = 0xffffffff; // Temporary
@@ -445,7 +447,7 @@ struct session *create_session(struct rtp_header *rtp){
   sp->header.AudioFormat = 1;
   sp->header.NumChannels = sp->channels;
   sp->header.SampleRate = sp->samprate;
-  
+
   sp->header.ByteRate = sp->samprate * sp->channels * 16/8;
   sp->header.BlockAlign = sp->channels * 16/8;
   sp->header.BitsPerSample = 16;
@@ -459,7 +461,7 @@ struct session *create_session(struct rtp_header *rtp){
   getnameinfo((struct sockaddr *)&Sender,sizeof(Sender),sender_text,sizeof(sender_text),NULL,0,NI_NOFQDN|NI_DGRAM|NI_NUMERICHOST);
   attrprintf(fd,"source","%s",sender_text);
   attrprintf(fd,"multicast","%s",PCM_mcast_address_text);
-  
+
   struct timespec ts;
   clock_gettime(CLOCK_REALTIME,&ts);
   attrprintf(fd,"unixstarttime","%ld.%09ld",(long)ts.tv_sec,(long)ts.tv_nsec);

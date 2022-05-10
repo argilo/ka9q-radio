@@ -27,8 +27,8 @@
 
 struct session {
   struct session *prev;       // Linked list pointers
-  struct session *next; 
-  
+  struct session *next;
+
   struct sockaddr sender;
   char addr[NI_MAXHOST];    // RTP Sender IP address
   char port[NI_MAXSERV];    // RTP Sender source port
@@ -37,7 +37,7 @@ struct session {
   pthread_mutex_t qmutex;
   pthread_cond_t qcond;
   struct packet *queue;
- 
+
   struct rtp_state rtp_state_in; // RTP input state
   struct rtp_state rtp_state_out; // RTP output state
 
@@ -90,10 +90,10 @@ struct option Options[] =
    {"verbose", no_argument, NULL, 'v'},
    {"tos", required_argument, NULL, 'p'},
    {"iptos", required_argument, NULL, 'p'},
-   {"ip-tos", required_argument, NULL, 'p'},    
+   {"ip-tos", required_argument, NULL, 'p'},
    {NULL, 0, NULL, 0},
   };
-   
+
 char Optstring[] = "A:I:N:S:T:vp:";
 
 struct sockaddr_storage Status_dest_address;
@@ -145,7 +145,7 @@ int main(int argc,char * const argv[]){
     Input_fd = listen_mcast(&PCM_dest_address,iface);
     if(Input_fd == -1)
       fprintf(stderr,"Can't set up input on %s: %sn",optarg,strerror(errno));
-    
+
   }
   if(Status){
     char iface[1024];
@@ -237,14 +237,14 @@ int main(int argc,char * const argv[]){
 
       while(cp - buffer < length){
 	enum status_type type = *cp++;
-	
+
 	if(type == EOL)
 	  break;
-	
+
 	unsigned int optlen = *cp++;
 	if(cp - buffer + optlen > length)
 	  break;
-	
+
 	// Should probably extract sample rate too, instead of assuming 48 kHz
 	switch(type){
 	case EOL:
@@ -277,7 +277,7 @@ int main(int argc,char * const argv[]){
 // The decode thread must free these buffers to avoid a memory leak
 void *input(void *arg){
   char *mcast_address_text = (char *)arg;
-  
+
   {
     char pname[16];
     snprintf(pname,sizeof(pname),"opin %s",mcast_address_text);
@@ -294,11 +294,11 @@ void *input(void *arg){
     pkt->next = NULL;
     pkt->data = NULL;
     pkt->len = 0;
-    
+
     struct sockaddr_storage sender;
     socklen_t socksize = sizeof(sender);
     int size = recvfrom(Input_fd,&pkt->content,sizeof(pkt->content),0,(struct sockaddr *)&sender,&socksize);
-    
+
     if(size == -1){
       if(errno != EINTR){ // Happens routinely, e.g., when window resized
 	perror("recvfrom");
@@ -308,7 +308,7 @@ void *input(void *arg){
     }
     if(size <= RTP_MIN_SIZE)
       continue; // Must be big enough for RTP header and at least some data
-    
+
     // Extract and convert RTP header to host format
     unsigned char const *dp = ntoh_rtp(&pkt->rtp,pkt->content);
     pkt->data = dp;
@@ -319,7 +319,7 @@ void *input(void *arg){
     }
     if(pkt->len <= 0)
       continue; // Used to be an assert, but would be triggered by bogus packets
-    
+
     // Find appropriate session; create new one if necessary
     struct session *sp = lookup_session((const struct sockaddr *)&sender,pkt->rtp.ssrc);
     if(!sp){
@@ -341,7 +341,7 @@ void *input(void *arg){
 	continue;
       }
     }
-    
+
     // Insert onto queue sorted by sequence number, wake up thread
     struct packet *q_prev = NULL;
     struct packet *qe = NULL;
@@ -349,7 +349,7 @@ void *input(void *arg){
       pthread_mutex_lock(&sp->qmutex);
       for(qe = sp->queue; qe && pkt->rtp.seq >= qe->rtp.seq; q_prev = qe,qe = qe->next)
 	;
-      
+
       pkt->next = qe;
       if(q_prev)
 	q_prev->next = pkt;
@@ -360,7 +360,7 @@ void *input(void *arg){
       pthread_cond_signal(&sp->qcond);
       pthread_mutex_unlock(&sp->qmutex);
     }
-  }      
+  }
 }
 
 
@@ -434,7 +434,7 @@ void *decode(void *arg){
 	  if(ret == ETIMEDOUT){
 	    // Idle timeout after 10 sec; close session and terminate thread
 	    pthread_mutex_unlock(&sp->qmutex);
-	    close_session(sp); 
+	    close_session(sp);
 	    return NULL; // exit thread
 	  }
 	}
@@ -445,7 +445,7 @@ void *decode(void *arg){
       } // End of mutex protected segment
     }
     sp->packets++; // Count all packets, regardless of type
-      
+
     int frame_size = 0;
     switch(pkt->rtp.type){
     case PCM_MONO_PT:
@@ -458,9 +458,9 @@ void *decode(void *arg){
     int samples_skipped = rtp_process(&sp->rtp_state_in,&pkt->rtp,frame_size);
     if(samples_skipped < 0)
       goto endloop; // Old dupe
-    
+
     signed short const * const samples = (signed short *)pkt->data;
-    
+
     for(int i=0; i<frame_size; i++){
       float const s = SCALE * (signed short)ntohs(samples[i]);
       if(write_rfilter(baseband,s) == 0)
@@ -538,8 +538,11 @@ struct session *lookup_session(const struct sockaddr * const sender,const uint32
 struct session *create_session(void){
 
   struct session * const sp = calloc(1,sizeof(*sp));
-  assert(sp != NULL); // Shouldn't happen on modern machines!
-  
+  if (!sp) {
+    fprintf(stdout,"out of memory\n");
+    exit(1);
+  }
+
   // Initialize entry
   pthread_mutex_init(&sp->qmutex,NULL);
   pthread_cond_init(&sp->qcond,NULL);
@@ -557,7 +560,7 @@ struct session *create_session(void){
 
 int close_session(struct session * const sp){
   assert(sp != NULL);
-  
+
   // packet queue should be empty, but just in case
   pthread_mutex_lock(&sp->qmutex);
   while(sp->queue){
@@ -567,7 +570,7 @@ int close_session(struct session * const sp){
   }
   pthread_mutex_unlock(&sp->qmutex);
   pthread_mutex_destroy(&sp->qmutex);
-  
+
 
   // Remove from linked list of sessions
   pthread_mutex_lock(&Audio_protect);
@@ -595,4 +598,3 @@ void closedown(int s){
   pthread_mutex_destroy(&Audio_protect);
   exit(0);
 }
-

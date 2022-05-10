@@ -131,6 +131,10 @@ static int return_data(hid_device *dev, unsigned char *data, size_t length);
 static hid_device *new_hid_device(void)
 {
 	hid_device *dev = calloc(1, sizeof(hid_device));
+	if (!dev) {
+    fprintf(stdout,"out of memory\n");
+    exit(1);
+  }
 	dev->blocking = 1;
 
 	pthread_mutex_init(&dev->mutex, NULL);
@@ -489,6 +493,10 @@ struct hid_device_info  *hid_enumerate(unsigned short vendor_id, unsigned short 
 
 							/* VID/PID match. Create the record. */
 							tmp = calloc(1, sizeof(struct hid_device_info));
+							if (!tmp) {
+						    fprintf(stdout,"out of memory\n");
+						    exit(1);
+						  }
 							if (cur_dev) {
 								cur_dev->next = tmp;
 							}

@@ -20,10 +20,10 @@
 
 struct pcmstream {
   struct pcmstream *prev;       // Linked list pointers
-  struct pcmstream *next; 
+  struct pcmstream *next;
   uint32_t ssrc;            // RTP Sending Source ID
   int type;                 // RTP type (10,11,20)
-  
+
   struct sockaddr sender;
   char addr[NI_MAXHOST];    // RTP Sender IP address
   char port[NI_MAXSERV];    // RTP Sender source port
@@ -154,7 +154,7 @@ int main(int argc,char *argv[]){
 	case PCM_MONO_8_PT:
 	  fprintf(stderr,", pcm mono");
 	  if(Stereo)
-	    fprintf(stderr,", expanding to pseudo-stereo");	    
+	    fprintf(stderr,", expanding to pseudo-stereo");
 	  break;
 	}
 	fprintf(stderr,"\n");
@@ -176,7 +176,7 @@ int main(int argc,char *argv[]){
     case PCM_STEREO_16_PT:
     case PCM_STEREO_12_PT:
     case PCM_STEREO_8_PT:
-      
+
       samples = size / 4;
       while(samples-- > 0){
 	// Swap sample to host order, cat to stdout
@@ -241,9 +241,12 @@ struct pcmstream *lookup_session(const struct sockaddr *sender,const uint32_t ss
 struct pcmstream *make_session(struct sockaddr const *sender,uint32_t ssrc,uint16_t seq,uint32_t timestamp){
   struct pcmstream *sp;
 
-  if((sp = calloc(1,sizeof(*sp))) == NULL)
-    return NULL; // Shouldn't happen on modern machines!
-  
+  sp = calloc(1,sizeof(*sp));
+  if (!sp) {
+    fprintf(stdout,"out of memory\n");
+    exit(1);
+  }
+
   // Initialize entry
   memcpy(&sp->sender,sender,sizeof(struct sockaddr));
   sp->ssrc = ssrc;
@@ -259,7 +262,7 @@ struct pcmstream *make_session(struct sockaddr const *sender,uint32_t ssrc,uint1
 int close_session(struct pcmstream *sp){
   if(sp == NULL)
     return -1;
-  
+
   // Remove from linked list
   if(sp->next != NULL)
     sp->next->prev = sp->prev;
@@ -270,6 +273,3 @@ int close_session(struct pcmstream *sp){
   free(sp);
   return 0;
 }
-
-
-
