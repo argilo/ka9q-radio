@@ -114,6 +114,10 @@ struct filter_in *create_filter_input(int const L,int const M, enum filtertype c
     memset(master->input_buffer.c, 0, (M-1)*sizeof(*master->input_buffer.c)); // Clear earlier state
     master->input.c = master->input_buffer.c + M - 1;
     master->fwd_plan = fftwf_plan_dft_1d(N, master->input_buffer.c, master->fdomain[0], FFTW_FORWARD, FFTW_ESTIMATE);
+    if (!master->fwd_plan) {
+      fprintf(stdout,"out of memory\n");
+      exit(1);
+    }
     break;
   case REAL:
     master->input_buffer.c = NULL;
@@ -126,6 +130,10 @@ struct filter_in *create_filter_input(int const L,int const M, enum filtertype c
     memset(master->input_buffer.r, 0, (M-1)*sizeof(*master->input_buffer.r)); // Clear earlier state
     master->input.r = master->input_buffer.r + M - 1;
     master->fwd_plan = fftwf_plan_dft_r2c_1d(N, master->input_buffer.r, master->fdomain[0], FFTW_ESTIMATE);
+    if (!master->fwd_plan) {
+      fprintf(stdout,"out of memory\n");
+      exit(1);
+    }
     break;
   }
   return master;
@@ -181,6 +189,10 @@ struct filter_out *create_filter_output(struct filter_in * master,complex float 
     slave->output_buffer.r = NULL; // catch erroneous references
     slave->output.c = slave->output_buffer.c + osize - olen;
     slave->rev_plan = fftwf_plan_dft_1d(osize,slave->f_fdomain,slave->output_buffer.c,FFTW_BACKWARD,FFTW_ESTIMATE);
+    if (!slave->rev_plan) {
+      fprintf(stdout,"out of memory\n");
+      exit(1);
+    }
     break;
   case REAL:
     slave->bins = osize / 2 + 1;
@@ -198,6 +210,10 @@ struct filter_out *create_filter_output(struct filter_in * master,complex float 
     slave->output_buffer.c = NULL;
     slave->output.r = slave->output_buffer.r + osize - olen;
     slave->rev_plan = fftwf_plan_dft_c2r_1d(osize,slave->f_fdomain,slave->output_buffer.r,FFTW_ESTIMATE);
+    if (!slave->rev_plan) {
+      fprintf(stdout,"out of memory\n");
+      exit(1);
+    }
     break;
   }
   slave->blocknum = master->blocknum;
@@ -705,7 +721,15 @@ int window_filter(int const L,int const M,complex float * const response,float c
     exit(1);
   }
   fftwf_plan fwd_filter_plan = fftwf_plan_dft_1d(N,buffer,buffer,FFTW_FORWARD,FFTW_ESTIMATE);
+  if (!fwd_filter_plan) {
+    fprintf(stdout,"out of memory\n");
+    exit(1);
+  }
   fftwf_plan rev_filter_plan = fftwf_plan_dft_1d(N,buffer,buffer,FFTW_BACKWARD,FFTW_ESTIMATE);
+  if (!rev_filter_plan) {
+    fprintf(stdout,"out of memory\n");
+    exit(1);
+  }
 
   // Convert to time domain
   memcpy(buffer,response,N * sizeof(*buffer));
@@ -779,9 +803,15 @@ int window_rfilter(int const L,int const M,complex float * const response,float 
     exit(1);
   }
   fftwf_plan fwd_filter_plan = fftwf_plan_dft_r2c_1d(N,timebuf,buffer,FFTW_ESTIMATE);
-  assert(fwd_filter_plan != NULL);
+  if (!fwd_filter_plan) {
+    fprintf(stdout,"out of memory\n");
+    exit(1);
+  }
   fftwf_plan rev_filter_plan = fftwf_plan_dft_c2r_1d(N,buffer,timebuf,FFTW_ESTIMATE);
-  assert(rev_filter_plan != NULL);
+  if (!rev_filter_plan) {
+    fprintf(stdout,"out of memory\n");
+    exit(1);
+  }
 
   // Convert to time domain
   memcpy(buffer,response,(N/2+1)*sizeof(*buffer));
