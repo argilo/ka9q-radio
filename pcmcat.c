@@ -221,7 +221,7 @@ static int init(struct pcmstream *pc,struct rtp_header const *rtp,struct sockadd
   if(Byteswap == -1){
     // Hardwired test for statically assigned big-endian 16-bit PCM payload types
     // The ideal way is to look at the data encoding in the status stream, which we'll eventually do
-    if(pc->type == 10 || pc->type == 11)
+    if(PT_table[pc->type].encoding == S16BE)
       Byteswap = true;
     else
       Byteswap = false;
