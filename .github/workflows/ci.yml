@@ -6,14 +6,29 @@ jobs:
   ubuntu-build:
     name: Ubuntu CI
     strategy:
+      fail-fast: false
       matrix:
-        makefile: [Makefile.linux]
+        image:
+          - debian:11
+          - debian:12
+          - ubuntu:20.04
+          - ubuntu:22.04
+          - ubuntu:24.04
     runs-on: ubuntu-latest
+    container:
+      image: ${{ matrix.image }}
+      options: --privileged
+      env:
+        DEBIAN_FRONTEND: noninteractive
     steps:
       - name: Install dependencies
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y \
+          apt-get update -qq
+          apt-get install -y \
+            build-essential \
+            libcap2-bin \
+            procps \
+            rsync \
             libusb-dev \
             libusb-1.0-0-dev \
             libncurses5-dev \
@@ -36,11 +51,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
       - name: Setup
-        run: ln -s ${{ matrix.makefile }} Makefile
+        run: ln -s Makefile.linux Makefile
       - name: Compile
         run: make
       - name: Install
-        run: sudo make install
+        run: make install
       - name: Build and test web
         run: |
           git clone https://github.com/davidmoreno/onion
@@ -54,13 +69,13 @@ jobs:
             -DONION_USE_TESTS=false \
             -DONION_EXAMPLES=false -DONION_USE_BINDINGS_CPP=false ..
           make
-          sudo make install
-          sudo ldconfig
+          make install
+          ldconfig
           cd ../../
           git clone https://github.com/scottnewell/ka9q-web
           cd ka9q-web
           sed -i 's|KA9Q_RADIO_DIR=../ka9q-radio|KA9Q_RADIO_DIR=../|' Makefile
-          sudo make install
+          make install
           cd ..
   macos-build:
     name: MacOS CI
